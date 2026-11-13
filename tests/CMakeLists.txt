@@ -8,6 +8,7 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(cipple_tests
         main.cpp
+        buffer_reader_test.cpp
         buffer_writer_test.cpp
 )
 

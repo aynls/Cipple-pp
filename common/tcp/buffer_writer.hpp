@@ -7,7 +7,7 @@
 
 namespace cipple::tcp
 {
-  // 协议编码原语（大端序）。向内部缓冲追加字节，无容量上限。
+  // 大端序，向内部_buffer追加字节，无容量上限。
   class BufferWriter
   {
   public:
