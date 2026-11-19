@@ -149,6 +149,35 @@ namespace
     EXPECT_EQ(storage.append(full, {}), AppendResult::kInserted);
   }
 
+  TEST_F(SqliteStorageTest, RollsBackAppendWhenCommitFails)
+  {
+    SqliteStorage storage{_path};
+    ASSERT_NO_FATAL_FAILURE(execute_sql(R"sql(
+      CREATE TABLE test_commit_guard (
+        missing_uuid BLOB REFERENCES message(uuid) DEFERRABLE INITIALLY DEFERRED
+      );
+      CREATE TRIGGER reject_ack_at_commit AFTER INSERT ON ack
+      BEGIN
+        INSERT INTO test_commit_guard VALUES (zeroblob(16));
+      END;
+    )sql"));
+    const auto full = update(1, "value");
+    const std::array<std::int32_t, 1> targets{7};
+
+    ASSERT_THROW(storage.append(full, targets), std::runtime_error);
+    EXPECT_TRUE(storage.list_keys().empty());
+    const auto lookup = storage.find_message(full.uuid());
+    ASSERT_FALSE(lookup);
+    EXPECT_EQ(lookup.error(), MessageUnavailable::kMissing);
+    EXPECT_TRUE(storage.pending_for_node(7).empty());
+
+    ASSERT_NO_FATAL_FAILURE(execute_sql("DROP TRIGGER reject_ack_at_commit"));
+    ASSERT_EQ(storage.append(full, targets), AppendResult::kInserted);
+    const auto pending = storage.pending_for_node(7);
+    ASSERT_EQ(pending.size(), 1);
+    EXPECT_EQ(pending[0].uuid(), full.uuid());
+  }
+
   TEST_F(SqliteStorageTest, KeepsPendingIncrementAndItsBaseUntilAllTargetsAck)
   {
     SqliteStorage storage{_path};
@@ -206,6 +235,65 @@ namespace
     EXPECT_EQ(retained[0].uuid(), deletion.uuid());
     EXPECT_TRUE(std::holds_alternative<EntityMessage::Delete>(retained[0].payload()));
     EXPECT_TRUE(storage.find_message(other.uuid()));
+  }
+
+  TEST_F(SqliteStorageTest, RollsBackRecyclingWhenAckCleanupFails)
+  {
+    SqliteStorage storage{_path};
+    const auto first = update(1, "first");
+    const auto second = update(2, "second");
+    const auto newest = update(3, "newest");
+    const std::array<std::int32_t, 1> targets{7};
+    ASSERT_EQ(storage.append(first, targets), AppendResult::kInserted);
+    ASSERT_EQ(storage.append(second, targets), AppendResult::kInserted);
+    ASSERT_EQ(storage.append(newest, {}), AppendResult::kInserted);
+    ASSERT_TRUE(storage.mark_acked(first.uuid(), 7));
+    ASSERT_TRUE(storage.mark_acked(second.uuid(), 7));
+    ASSERT_NO_FATAL_FAILURE(execute_sql(R"sql(
+      CREATE TRIGGER reject_last_ack_delete BEFORE DELETE ON ack
+      WHEN (SELECT count(*) FROM ack) = 1
+      BEGIN
+        SELECT RAISE(ABORT, 'test failed second ACK delete');
+      END;
+    )sql"));
+
+    ASSERT_THROW(storage.recycle("app", "key", 1), std::runtime_error);
+    const auto history = storage.history("app", "key");
+    ASSERT_EQ(history.size(), 3);
+    EXPECT_EQ(std::get<EntityMessage::Update>(history[0].payload()).value, "first");
+    EXPECT_EQ(std::get<EntityMessage::Update>(history[1].payload()).value, "second");
+
+    ASSERT_NO_FATAL_FAILURE(execute_sql("DROP TRIGGER reject_last_ack_delete"));
+    ASSERT_EQ(storage.recycle("app", "key", 1), 2);
+    const auto retained = storage.history("app", "key");
+    ASSERT_EQ(retained.size(), 1);
+    EXPECT_EQ(retained[0].uuid(), newest.uuid());
+  }
+
+  TEST_F(SqliteStorageTest, KeepsBaseForIncrementInsideRetentionWindow)
+  {
+    SqliteStorage storage{_path};
+    const auto base = update(1, "base");
+    const auto superseded = update(2, "superseded");
+    const auto delta = increment(base, 3);
+    const auto newest = update(4, "newest");
+    ASSERT_EQ(storage.append(base, {}), AppendResult::kInserted);
+    ASSERT_EQ(storage.append(superseded, {}), AppendResult::kInserted);
+    ASSERT_EQ(storage.append(delta, {}), AppendResult::kInserted);
+    ASSERT_EQ(storage.append(newest, {}), AppendResult::kInserted);
+
+    ASSERT_EQ(storage.recycle("app", "key", 2), 1);
+    const auto history = storage.history("app", "key");
+    ASSERT_EQ(history.size(), 3);
+    EXPECT_EQ(history[0].uuid(), base.uuid());
+    EXPECT_EQ(history[1].uuid(), delta.uuid());
+    EXPECT_EQ(std::get<EntityMessage::IncrementalUpdate>(history[1].payload()).base_message_uuid, base.uuid());
+    EXPECT_EQ(history[2].uuid(), newest.uuid());
+
+    ASSERT_EQ(storage.recycle("app", "key", 1), 2);
+    const auto retained = storage.history("app", "key");
+    ASSERT_EQ(retained.size(), 1);
+    EXPECT_EQ(retained[0].uuid(), newest.uuid());
   }
 
   TEST_F(SqliteStorageTest, AcceptsLateIncrementWithRecycledBase)
