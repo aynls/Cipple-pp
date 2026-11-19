@@ -9,20 +9,23 @@
 
 namespace cipple::tcp
 {
-  constexpr std::size_t kLengthPrefixSize = 4;
+  void validate_frame_limit(const std::size_t max_frame_length)
+  {
+    if (max_frame_length == 0
+      || max_frame_length > static_cast<std::size_t>(std::numeric_limits<std::int32_t>::max()))
+    {
+      throw std::invalid_argument{"frame codec: max frame length must be in [1, INT32_MAX]"};
+    }
+  }
 
   std::vector<std::uint8_t> encode_frame(
     const message::Message& message, const std::size_t max_frame_length)
   {
-    if (max_frame_length == 0
-      || max_frame_length > static_cast<std::size_t>(std::numeric_limits<int32_t>::max()))
-    {
-      throw std::invalid_argument{"frame codec: max frame length must be in [1, INT32_MAX]"};
-    }
+    validate_frame_limit(max_frame_length);
     BufferWriter writer;
     writer.write_i32(0);
     message.encode(writer);
-    const auto length = writer.size() - kLengthPrefixSize;
+    const auto length = writer.size() - kFrameLengthPrefixSize;
     if (length > max_frame_length)
     {
       throw std::length_error{"encode_frame: frame length exceeds limit"};
@@ -31,34 +34,38 @@ namespace cipple::tcp
     return writer.bytes();
   }
 
-  std::optional<FrameView> try_decode_frame(
-    const std::span<const std::uint8_t> data, const std::size_t max_frame_length)
+  std::size_t decode_frame_length(const std::span<const std::uint8_t, kFrameLengthPrefixSize> prefix,
+                                  const std::size_t max_frame_length)
   {
-    if (max_frame_length == 0
-      || max_frame_length > static_cast<std::size_t>(std::numeric_limits<int32_t>::max()))
-    {
-      throw std::invalid_argument{"frame codec: max frame length must be in [1, INT32_MAX]"};
-    }
-    if (data.size() < kLengthPrefixSize)
-    {
-      return std::nullopt;
-    }
-
-    BufferReader reader{data.first(kLengthPrefixSize)};
+    validate_frame_limit(max_frame_length);
+    BufferReader reader{prefix};
     const auto signed_length = reader.read_i32();
     if (signed_length <= 0)
     {
-      throw std::invalid_argument{"try_decode_frame: frame length must be positive"};
+      throw std::invalid_argument{"frame codec: frame length must be positive"};
     }
     const auto length = static_cast<std::size_t>(signed_length);
     if (length > max_frame_length)
     {
-      throw std::length_error{"try_decode_frame: frame length exceeds limit"};
+      throw std::length_error{"frame codec: frame length exceeds limit"};
     }
-    if (data.size() - kLengthPrefixSize < length)
+    return length;
+  }
+
+  std::optional<FrameView> try_decode_frame(
+    const std::span<const std::uint8_t> data, const std::size_t max_frame_length)
+  {
+    if (data.size() < kFrameLengthPrefixSize)
+    {
+      validate_frame_limit(max_frame_length);
+      return std::nullopt;
+    }
+    const auto length = decode_frame_length(data.first<kFrameLengthPrefixSize>(), max_frame_length);
+    if (data.size() - kFrameLengthPrefixSize < length)
     {
       return std::nullopt;
     }
-    return FrameView{.body = data.subspan(kLengthPrefixSize, length), .bytes_consumed = kLengthPrefixSize + length};
+    return FrameView{.body = data.subspan(kFrameLengthPrefixSize, length),
+                     .bytes_consumed = kFrameLengthPrefixSize + length};
   }
 }

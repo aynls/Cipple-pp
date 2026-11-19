@@ -12,6 +12,7 @@ namespace cipple::message
 
 namespace cipple::tcp
 {
+  inline constexpr std::size_t kFrameLengthPrefixSize = 4;
   inline constexpr std::size_t kDefaultMaxFrameLength = 16 * 1024 * 1024;
 
   struct FrameView
@@ -20,6 +21,12 @@ namespace cipple::tcp
     std::span<const std::uint8_t> body;
     std::size_t bytes_consumed;
   };
+
+  void validate_frame_limit(std::size_t max_frame_length);
+
+  // Read and validate the body length before allocating a receive buffer.
+  std::size_t decode_frame_length(std::span<const std::uint8_t, kFrameLengthPrefixSize> prefix,
+                                  std::size_t max_frame_length = kDefaultMaxFrameLength);
 
   // Encode int32 length (BE) + type + uuid + fields. Length excludes its own 4 bytes.
   // The configurable limit covers the body only and must be in [1, INT32_MAX].

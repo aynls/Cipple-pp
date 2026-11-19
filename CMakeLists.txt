@@ -9,6 +9,7 @@ find_package(SQLite3 3.24 REQUIRED)
 if (NOT TARGET SQLite3::SQLite3)
     add_library(SQLite3::SQLite3 ALIAS SQLite::SQLite3)
 endif ()
+find_package(Boost CONFIG REQUIRED COMPONENTS asio)
 
 enable_testing()
 

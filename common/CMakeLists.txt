@@ -34,12 +34,21 @@ add_library(cipple_common STATIC
         storage/storage.cpp
         tcp/buffer_reader.cpp
         tcp/buffer_writer.cpp
+        tcp/connector.cpp
         tcp/frame_codec.cpp
         tcp/message_decoder.cpp
+        tcp/session.cpp
 )
 
 target_include_directories(cipple_common PUBLIC
         ${CMAKE_CURRENT_SOURCE_DIR}
 )
 
-target_link_libraries(cipple_common PRIVATE SQLite3::SQLite3)
+target_link_libraries(cipple_common
+        PUBLIC Boost::asio
+        PRIVATE SQLite3::SQLite3
+)
+
+if (MINGW)
+    target_link_libraries(cipple_common PUBLIC ws2_32 mswsock)
+endif ()
