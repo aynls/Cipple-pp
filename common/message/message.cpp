@@ -23,6 +23,7 @@ namespace cipple::message
   void Message::encode(tcp::BufferWriter& writer) const
   {
     writer.write_u8(to_byte(_type));
+    writer.write_bytes(_uuid.bytes());
     encode_fields(writer);
   }
 }

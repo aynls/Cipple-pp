@@ -1,0 +1,30 @@
+#pragma once
+#include <memory>
+
+#include "message/message.hpp"
+#include "message/result.hpp"
+
+namespace cipple::tcp
+{
+  class BufferReader;
+}
+
+namespace cipple::message
+{
+  // type(5) + uuid + byte result
+  class SyncResponse final : public Message
+  {
+  public:
+    SyncResponse(Uuid uuid, Result result);
+
+    Result result() const noexcept;
+
+    static std::unique_ptr<SyncResponse> decode(tcp::BufferReader& reader);
+
+  protected:
+    void encode_fields(tcp::BufferWriter& writer) const override;
+
+  private:
+    Result _result;
+  };
+}
