@@ -10,6 +10,7 @@ add_executable(cipple_tests
         main.cpp
         buffer_reader_test.cpp
         buffer_writer_test.cpp
+        sqlite_storage_test.cpp
 )
 
 target_link_libraries(cipple_tests PRIVATE
@@ -17,6 +18,7 @@ target_link_libraries(cipple_tests PRIVATE
         cipple_server_lib
         cipple_client_lib
         GTest::gtest_main
+        SQLite3::SQLite3
 )
 
 include(GoogleTest)
