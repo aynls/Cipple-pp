@@ -15,9 +15,9 @@ namespace cipple
   class Uuid
   {
   public:
-    static Uuid generate();                                            // v4 随机，线程安全
+    static Uuid generate(); // v4 随机，线程安全
     static Uuid from_bytes(std::span<const std::uint8_t, 16>) noexcept; // 解码用
-    static std::optional<Uuid> parse(std::string_view) noexcept;        // "8-4-4-4-12" 格式，日志/测试用
+    static std::optional<Uuid> parse(std::string_view) noexcept; // "8-4-4-4-12" 格式，日志/测试用
 
     const std::array<std::uint8_t, 16>& bytes() const noexcept;
     std::string to_string() const;

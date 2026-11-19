@@ -29,7 +29,10 @@ namespace cipple::tcp
 
   std::uint64_t BufferReader::read_u64()
   {
-    return (static_cast<std::uint64_t>(read_u32()) << 32) | read_u32();
+    require(8);
+    const auto hi = read_u32();
+    const auto lo = read_u32();
+    return (static_cast<std::uint64_t>(hi) << 32) | lo;
   }
 
   std::int32_t BufferReader::read_i32()
@@ -40,6 +43,16 @@ namespace cipple::tcp
   std::int64_t BufferReader::read_i64()
   {
     return std::bit_cast<std::int64_t>(read_u64());
+  }
+
+  bool BufferReader::read_bool()
+  {
+    return read_u8() == 1;
+  }
+
+  double BufferReader::read_f64()
+  {
+    return std::bit_cast<double>(read_u64());
   }
 
   std::string BufferReader::read_string()
