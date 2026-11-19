@@ -34,6 +34,8 @@ add_library(cipple_common STATIC
         storage/storage.cpp
         tcp/buffer_reader.cpp
         tcp/buffer_writer.cpp
+        tcp/frame_codec.cpp
+        tcp/message_decoder.cpp
 )
 
 target_include_directories(cipple_common PUBLIC
