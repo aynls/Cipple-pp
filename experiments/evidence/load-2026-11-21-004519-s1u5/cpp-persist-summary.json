@@ -1,0 +1,79 @@
+{
+  "engine": "cpp-wire-python+persist-sqlite",
+  "observation": "t_publish=before PUT frame send; t_recv=after per-subscriber SQLite INSERT OR IGNORE + commit, before/with ACK send (durable cursor + harness-side persistence; wire harness, NOT native C++ client). Comparable post-persistence boundary vs Java native insert. Bare cursor read without sqlite is NOT equivalent and is labelled separately.",
+  "placement": "index-mod: sub i -> servers[i % N], pub -> servers[0] (node 1)",
+  "persist_sqlite_dir": "C:\\Users\\21423\\AppData\\Local\\Temp\\opencode\\cipple-load-load-2026-11-21-004519-s1u5\\run\\cpp-persist",
+  "servers": "127.0.0.1:13401",
+  "sub_homes": [
+    "127.0.0.1:13401",
+    "127.0.0.1:13401",
+    "127.0.0.1:13401",
+    "127.0.0.1:13401",
+    "127.0.0.1:13401"
+  ],
+  "pub_home": "127.0.0.1:13401",
+  "app": "benchapp",
+  "key": "benchkey-persist",
+  "num_subscribers": 5,
+  "warmup_ops": 8,
+  "meas_ops": 100,
+  "gap_ms": 250,
+  "deadline_ms": 15000,
+  "value_bytes": 256,
+  "t0_ms": 1795193120018,
+  "resume_after": 0,
+  "subscribe_settle_ms": 2000,
+  "subscribed": 5,
+  "measurement_start_ms": 1795193197556,
+  "measurement_end_ms": 1795193222317,
+  "send_span_ms": 24750.1231,
+  "wall_ms": 24761,
+  "completed_ops": 100,
+  "goodput_ops": 4.039,
+  "coverage_pct": 100.0,
+  "received_pairs": 500,
+  "total_pairs": 500,
+  "drain_ms": 8,
+  "p50_ms": 10.832,
+  "p95_ms": 18.56,
+  "p99_ms": 19.822,
+  "per_subscriber": [
+    {
+      "subscriber": 0,
+      "n": 100,
+      "p50_ms": 11.31,
+      "p95_ms": 17.678,
+      "p99_ms": 19.401
+    },
+    {
+      "subscriber": 1,
+      "n": 100,
+      "p50_ms": 11.495,
+      "p95_ms": 19.589,
+      "p99_ms": 20.538
+    },
+    {
+      "subscriber": 2,
+      "n": 100,
+      "p50_ms": 10.346,
+      "p95_ms": 18.578,
+      "p99_ms": 19.646
+    },
+    {
+      "subscriber": 3,
+      "n": 100,
+      "p50_ms": 9.1,
+      "p95_ms": 16.776,
+      "p99_ms": 19.396
+    },
+    {
+      "subscriber": 4,
+      "n": 100,
+      "p50_ms": 11.287,
+      "p95_ms": 18.694,
+      "p99_ms": 19.671
+    }
+  ],
+  "errors": [],
+  "raw_jsonl": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-performance\\load-2026-11-21-004519-s1u5\\cpp-persist-summary.jsonl"
+}

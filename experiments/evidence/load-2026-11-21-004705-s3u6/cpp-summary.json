@@ -1,0 +1,87 @@
+{
+  "engine": "cpp-wire-python(live)",
+  "observation": "t_publish=before PUT frame send; t_recv=after DISPATCH parse, before/with ACK send (live, no cursor, no store; wire harness, NOT native C++ client). Online-delivery boundary comparable to Java native online delivery.",
+  "placement": "index-mod: sub i -> servers[i % N], pub -> servers[0] (node 1)",
+  "persist_sqlite_dir": null,
+  "servers": "127.0.0.1:13401,127.0.0.1:13402,127.0.0.1:13403",
+  "sub_homes": [
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403",
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403"
+  ],
+  "pub_home": "127.0.0.1:13401",
+  "app": "benchapp",
+  "key": "benchkey",
+  "num_subscribers": 6,
+  "warmup_ops": 8,
+  "meas_ops": 100,
+  "gap_ms": 200,
+  "deadline_ms": 15000,
+  "value_bytes": 256,
+  "t0_ms": 1795193226340,
+  "resume_after": null,
+  "subscribe_settle_ms": 2000,
+  "subscribed": 6,
+  "measurement_start_ms": 1795193274981,
+  "measurement_end_ms": 1795193294792,
+  "send_span_ms": 19800.5251,
+  "wall_ms": 19811,
+  "completed_ops": 100,
+  "goodput_ops": 5.048,
+  "coverage_pct": 100.0,
+  "received_pairs": 600,
+  "total_pairs": 600,
+  "drain_ms": 9,
+  "p50_ms": 8.016,
+  "p95_ms": 11.674,
+  "p99_ms": 21.158,
+  "per_subscriber": [
+    {
+      "subscriber": 0,
+      "n": 100,
+      "p50_ms": 4.542,
+      "p95_ms": 5.691,
+      "p99_ms": 11.249
+    },
+    {
+      "subscriber": 1,
+      "n": 100,
+      "p50_ms": 8.877,
+      "p95_ms": 11.376,
+      "p99_ms": 21.107
+    },
+    {
+      "subscriber": 2,
+      "n": 100,
+      "p50_ms": 9.613,
+      "p95_ms": 11.797,
+      "p99_ms": 21.312
+    },
+    {
+      "subscriber": 3,
+      "n": 100,
+      "p50_ms": 4.635,
+      "p95_ms": 5.796,
+      "p99_ms": 11.355
+    },
+    {
+      "subscriber": 4,
+      "n": 100,
+      "p50_ms": 8.995,
+      "p95_ms": 11.474,
+      "p99_ms": 21.158
+    },
+    {
+      "subscriber": 5,
+      "n": 100,
+      "p50_ms": 9.552,
+      "p95_ms": 11.704,
+      "p99_ms": 21.227
+    }
+  ],
+  "errors": [],
+  "raw_jsonl": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-performance\\load-2026-11-21-004705-s3u6\\cpp-summary.jsonl"
+}

@@ -1,0 +1,15 @@
+{
+  "code_revision": "cd188f4db3b736c4d62c510f5b92cd9f35af95b6",
+  "source": "git archive extracted to a new directory",
+  "configuration": "Release, CMake + UCRT64 + Ninja",
+  "server_sha256": "849937cd4f8a3cd24b0459ecfe39b7b4c68fdfc95d8a17b0275f70ff3f13c5e1",
+  "client_sha256": "9b286985f2a8c2f685703a647421761a16faf702e3343bddfaa7235d098a4796",
+  "ctest_total": 44,
+  "ctest_passed": 44,
+  "ctest_seconds": 2.82,
+  "demo": {
+    "replicas": 3,
+    "offline_increment_and_delete": "passed",
+    "same_subscriber_state_on_different_replica": "passed"
+  }
+}

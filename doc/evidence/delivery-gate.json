@@ -1,0 +1,8 @@
+{
+  "passed": 14,
+  "exit_code": 0,
+  "report_sha256": "e7f41bac3b2219744cdaab9e03f1becfac92a8f8209b150afc5a0a36a8db24e1",
+  "server_sha256": "849937cd4f8a3cd24b0459ecfe39b7b4c68fdfc95d8a17b0275f70ff3f13c5e1",
+  "client_sha256": "9b286985f2a8c2f685703a647421761a16faf702e3343bddfaa7235d098a4796",
+  "command": "py -3 tests/acceptance/run_acceptance.py --server SERVER --client CLIENT --ripple-dir RIPPLE --frozen-revision cd188f4db3b736c4d62c510f5b92cd9f35af95b6"
+}

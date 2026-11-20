@@ -1,0 +1,29 @@
+[00:45:19] PHASE 0 START: resolve + snapshot
+[00:45:19] stamp=load-2026-11-21-004519-s1u5 work=C:\Users\21423\AppData\Local\Temp\opencode\cipple-load-load-2026-11-21-004519-s1u5
+[00:45:19] experiments=D:\UCAS\OOPLab\Cipple++\experiments repo=D:\UCAS\OOPLab\Cipple++ rippleDir=D:\UCAS\OOPLab\Ripple
+[00:45:19] java=C:\Program Files\Eclipse Adoptium\jdk-25.0.3.9-hotspot\bin\java.exe javac=C:\Program Files\Eclipse Adoptium\jdk-25.0.3.9-hotspot\bin\javac.exe mvn=C:\Users\21423\AppData\Local\Temp\opencode\apache-maven-3.9.9\bin\mvn.cmd python=C:\Users\21423\AppData\Local\Programs\Python\Python314\python.exe
+[00:45:19] config: servers=1 subs=5 warmup=8 ops=100 gapMs=250 deadlineMs=15000 valueBytes=256 javaProto=star cppOverlay=star probeDurable=False measurePersist=True
+[00:45:19] cipple_server_exe=C:\Users\21423\AppData\Local\Temp\cipple-rc-check-7cd0d7ce\source\build\server\cipple_server.exe
+[00:45:19] cipple sha256=849937CD4F8A3CD24B0459ECFE39B7B4C68FDFC95D8A17B0275F70FF3F13C5E1 mtime=2026-11-20T16:25:28.0419671Z size=1221873
+[00:45:19] cipple ref=cd188f4db3b736c4d62c510f5b92cd9f35af95b6
+[00:45:19] ripple HEAD(worktree)=468e9cb4296110467e3cfdafed412b3dbecfd52a pinned=468e9cb4296110467e3cfdafed412b3dbecfd52a
+[00:45:19] PHASE 0 END
+[00:45:19] PHASE 1 START: Java baseline build (pinned archive; reuse verified path when valid)
+[00:45:19] reuse Java build at C:\Users\21423\AppData\Local\Temp\opencode\ripple-baseline with pin 468e9cb4296110467e3cfdafed412b3dbecfd52a
+[00:45:20] PHASE 1 END: Java package ready (C:\Users\21423\AppData\Local\Temp\opencode\ripple-baseline), JVM options -Dio.netty.eventLoopThreads=2
+[00:45:20] PHASE 2 START: Java servers (phase A setup)
+[00:45:20] java nodes=1:127.0.0.1:13301
+[00:45:27] PHASE 2 END: java cluster listening
+[00:45:27] PHASE 3 START: prepare the Java driver and sample server resources
+[00:45:29] Java measured phase
+[00:45:59] PHASE 3 END: java driver exit=0
+[00:45:59] PHASE 4 START: C++ servers (measured phase B setup; sequential, no overlap with Java measurement)
+[00:46:03] PHASE 4 END: cppOk=True
+[00:46:03] PHASE 5 START: C++ wire live (phase B, Java has exited)
+[00:46:33] PHASE 5 END: cpp live driver exit=0
+[00:46:33] PHASE 6 START: optional C++ cursor and SQLite profiles
+[00:47:02] persist-sqlite probe exit=0 (durable cursor + per-sub SQLite commit before ACK; comparable post-persistence)
+[00:47:02] PHASE 6 END
+[00:47:02] PHASE 7 START: summarize (utf-8-sig tolerant; keeps live vs persist distinct)
+[00:47:03] PHASE 7 END
+[00:47:03] cleanup: stopping only processes started by this script

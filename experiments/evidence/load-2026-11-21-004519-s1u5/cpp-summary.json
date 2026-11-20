@@ -1,0 +1,79 @@
+{
+  "engine": "cpp-wire-python(live)",
+  "observation": "t_publish=before PUT frame send; t_recv=after DISPATCH parse, before/with ACK send (live, no cursor, no store; wire harness, NOT native C++ client). Online-delivery boundary comparable to Java native online delivery.",
+  "placement": "index-mod: sub i -> servers[i % N], pub -> servers[0] (node 1)",
+  "persist_sqlite_dir": null,
+  "servers": "127.0.0.1:13401",
+  "sub_homes": [
+    "127.0.0.1:13401",
+    "127.0.0.1:13401",
+    "127.0.0.1:13401",
+    "127.0.0.1:13401",
+    "127.0.0.1:13401"
+  ],
+  "pub_home": "127.0.0.1:13401",
+  "app": "benchapp",
+  "key": "benchkey",
+  "num_subscribers": 5,
+  "warmup_ops": 8,
+  "meas_ops": 100,
+  "gap_ms": 250,
+  "deadline_ms": 15000,
+  "value_bytes": 256,
+  "t0_ms": 1795193120018,
+  "resume_after": null,
+  "subscribe_settle_ms": 2000,
+  "subscribed": 5,
+  "measurement_start_ms": 1795193168019,
+  "measurement_end_ms": 1795193192780,
+  "send_span_ms": 24750.1447,
+  "wall_ms": 24761,
+  "completed_ops": 100,
+  "goodput_ops": 4.039,
+  "coverage_pct": 100.0,
+  "received_pairs": 500,
+  "total_pairs": 500,
+  "drain_ms": 5,
+  "p50_ms": 4.601,
+  "p95_ms": 12.947,
+  "p99_ms": 25.287,
+  "per_subscriber": [
+    {
+      "subscriber": 0,
+      "n": 100,
+      "p50_ms": 4.714,
+      "p95_ms": 12.947,
+      "p99_ms": 25.287
+    },
+    {
+      "subscriber": 1,
+      "n": 100,
+      "p50_ms": 4.5,
+      "p95_ms": 12.8,
+      "p99_ms": 25.164
+    },
+    {
+      "subscriber": 2,
+      "n": 100,
+      "p50_ms": 4.709,
+      "p95_ms": 12.872,
+      "p99_ms": 25.214
+    },
+    {
+      "subscriber": 3,
+      "n": 100,
+      "p50_ms": 4.54,
+      "p95_ms": 12.185,
+      "p99_ms": 25.069
+    },
+    {
+      "subscriber": 4,
+      "n": 100,
+      "p50_ms": 4.327,
+      "p95_ms": 12.079,
+      "p99_ms": 24.993
+    }
+  ],
+  "errors": [],
+  "raw_jsonl": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-performance\\load-2026-11-21-004519-s1u5\\cpp-summary.jsonl"
+}

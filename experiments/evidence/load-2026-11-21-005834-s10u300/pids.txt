@@ -1,0 +1,20 @@
+java-server1 pid=184712 api=13301 ui=14301
+java-server2 pid=174308 api=13302 ui=14302
+java-server3 pid=162340 api=13303 ui=14303
+java-server4 pid=179308 api=13304 ui=14304
+java-server5 pid=186712 api=13305 ui=14305
+java-server6 pid=166640 api=13306 ui=14306
+java-server7 pid=181820 api=13307 ui=14307
+java-server8 pid=176848 api=13308 ui=14308
+java-server9 pid=165980 api=13309 ui=14309
+java-server10 pid=117256 api=13310 ui=14310
+cpp-server1 pid=200800 port=13401
+cpp-server2 pid=201340 port=13402
+cpp-server3 pid=172524 port=13403
+cpp-server4 pid=178624 port=13404
+cpp-server5 pid=201008 port=13405
+cpp-server6 pid=126868 port=13406
+cpp-server7 pid=166792 port=13407
+cpp-server8 pid=201580 port=13408
+cpp-server9 pid=144420 port=13409
+cpp-server10 pid=192620 port=13410

@@ -1,0 +1,279 @@
+{
+  "engine": "cpp-wire-python+persist-sqlite",
+  "observation": "t_publish=before PUT frame send; t_recv=after per-subscriber SQLite INSERT OR IGNORE + commit, before/with ACK send (durable cursor + harness-side persistence; wire harness, NOT native C++ client). Comparable post-persistence boundary vs Java native insert. Bare cursor read without sqlite is NOT equivalent and is labelled separately.",
+  "placement": "index-mod: sub i -> servers[i % N], pub -> servers[0] (node 1)",
+  "persist_sqlite_dir": "C:\\Users\\21423\\AppData\\Local\\Temp\\opencode\\cipple-load-load-2026-11-21-004841-s3u30\\run\\cpp-persist",
+  "servers": "127.0.0.1:13401,127.0.0.1:13402,127.0.0.1:13403",
+  "sub_homes": [
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403",
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403",
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403",
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403",
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403",
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403",
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403",
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403",
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403",
+    "127.0.0.1:13401",
+    "127.0.0.1:13402",
+    "127.0.0.1:13403"
+  ],
+  "pub_home": "127.0.0.1:13401",
+  "app": "benchapp",
+  "key": "benchkey-persist",
+  "num_subscribers": 30,
+  "warmup_ops": 8,
+  "meas_ops": 150,
+  "gap_ms": 100,
+  "deadline_ms": 15000,
+  "value_bytes": 256,
+  "t0_ms": 1795193322646,
+  "resume_after": 0,
+  "subscribe_settle_ms": 2000,
+  "subscribed": 30,
+  "measurement_start_ms": 1795193403071,
+  "measurement_end_ms": 1795193418005,
+  "send_span_ms": 14900.252,
+  "wall_ms": 14934,
+  "completed_ops": 150,
+  "goodput_ops": 10.044,
+  "coverage_pct": 100.0,
+  "received_pairs": 4500,
+  "total_pairs": 4500,
+  "drain_ms": 24,
+  "p50_ms": 20.866,
+  "p95_ms": 27.359,
+  "p99_ms": 29.557,
+  "per_subscriber": [
+    {
+      "subscriber": 0,
+      "n": 150,
+      "p50_ms": 13.303,
+      "p95_ms": 16.557,
+      "p99_ms": 18.338
+    },
+    {
+      "subscriber": 1,
+      "n": 150,
+      "p50_ms": 23.342,
+      "p95_ms": 27.929,
+      "p99_ms": 30.99
+    },
+    {
+      "subscriber": 2,
+      "n": 150,
+      "p50_ms": 23.323,
+      "p95_ms": 28.455,
+      "p99_ms": 30.177
+    },
+    {
+      "subscriber": 3,
+      "n": 150,
+      "p50_ms": 13.215,
+      "p95_ms": 16.523,
+      "p99_ms": 17.532
+    },
+    {
+      "subscriber": 4,
+      "n": 150,
+      "p50_ms": 23.134,
+      "p95_ms": 28.156,
+      "p99_ms": 29.613
+    },
+    {
+      "subscriber": 5,
+      "n": 150,
+      "p50_ms": 23.323,
+      "p95_ms": 28.469,
+      "p99_ms": 30.391
+    },
+    {
+      "subscriber": 6,
+      "n": 150,
+      "p50_ms": 13.283,
+      "p95_ms": 16.821,
+      "p99_ms": 17.283
+    },
+    {
+      "subscriber": 7,
+      "n": 150,
+      "p50_ms": 22.994,
+      "p95_ms": 28.081,
+      "p99_ms": 30.071
+    },
+    {
+      "subscriber": 8,
+      "n": 150,
+      "p50_ms": 23.341,
+      "p95_ms": 28.29,
+      "p99_ms": 29.557
+    },
+    {
+      "subscriber": 9,
+      "n": 150,
+      "p50_ms": 13.422,
+      "p95_ms": 16.286,
+      "p99_ms": 17.185
+    },
+    {
+      "subscriber": 10,
+      "n": 150,
+      "p50_ms": 23.202,
+      "p95_ms": 28.519,
+      "p99_ms": 30.938
+    },
+    {
+      "subscriber": 11,
+      "n": 150,
+      "p50_ms": 23.65,
+      "p95_ms": 28.438,
+      "p99_ms": 30.126
+    },
+    {
+      "subscriber": 12,
+      "n": 150,
+      "p50_ms": 13.483,
+      "p95_ms": 16.39,
+      "p99_ms": 17.535
+    },
+    {
+      "subscriber": 13,
+      "n": 150,
+      "p50_ms": 23.524,
+      "p95_ms": 27.697,
+      "p99_ms": 29.799
+    },
+    {
+      "subscriber": 14,
+      "n": 150,
+      "p50_ms": 23.382,
+      "p95_ms": 28.113,
+      "p99_ms": 29.91
+    },
+    {
+      "subscriber": 15,
+      "n": 150,
+      "p50_ms": 13.641,
+      "p95_ms": 16.036,
+      "p99_ms": 17.14
+    },
+    {
+      "subscriber": 16,
+      "n": 150,
+      "p50_ms": 23.201,
+      "p95_ms": 28.169,
+      "p99_ms": 29.666
+    },
+    {
+      "subscriber": 17,
+      "n": 150,
+      "p50_ms": 23.226,
+      "p95_ms": 28.572,
+      "p99_ms": 29.58
+    },
+    {
+      "subscriber": 18,
+      "n": 150,
+      "p50_ms": 12.626,
+      "p95_ms": 16.335,
+      "p99_ms": 19.22
+    },
+    {
+      "subscriber": 19,
+      "n": 150,
+      "p50_ms": 22.635,
+      "p95_ms": 28.546,
+      "p99_ms": 30.774
+    },
+    {
+      "subscriber": 20,
+      "n": 150,
+      "p50_ms": 23.189,
+      "p95_ms": 28.447,
+      "p99_ms": 30.249
+    },
+    {
+      "subscriber": 21,
+      "n": 150,
+      "p50_ms": 12.104,
+      "p95_ms": 15.686,
+      "p99_ms": 18.062
+    },
+    {
+      "subscriber": 22,
+      "n": 150,
+      "p50_ms": 22.832,
+      "p95_ms": 27.661,
+      "p99_ms": 29.299
+    },
+    {
+      "subscriber": 23,
+      "n": 150,
+      "p50_ms": 22.732,
+      "p95_ms": 28.126,
+      "p99_ms": 29.304
+    },
+    {
+      "subscriber": 24,
+      "n": 150,
+      "p50_ms": 10.128,
+      "p95_ms": 15.549,
+      "p99_ms": 17.697
+    },
+    {
+      "subscriber": 25,
+      "n": 150,
+      "p50_ms": 22.466,
+      "p95_ms": 27.012,
+      "p99_ms": 29.841
+    },
+    {
+      "subscriber": 26,
+      "n": 150,
+      "p50_ms": 22.636,
+      "p95_ms": 28.313,
+      "p99_ms": 29.744
+    },
+    {
+      "subscriber": 27,
+      "n": 150,
+      "p50_ms": 7.29,
+      "p95_ms": 14.479,
+      "p99_ms": 16.446
+    },
+    {
+      "subscriber": 28,
+      "n": 150,
+      "p50_ms": 22.168,
+      "p95_ms": 27.278,
+      "p99_ms": 28.85
+    },
+    {
+      "subscriber": 29,
+      "n": 150,
+      "p50_ms": 21.951,
+      "p95_ms": 27.629,
+      "p99_ms": 29.513
+    }
+  ],
+  "errors": [],
+  "raw_jsonl": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-performance\\load-2026-11-21-004841-s3u30\\cpp-persist-summary.jsonl"
+}

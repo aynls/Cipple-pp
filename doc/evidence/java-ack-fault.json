@@ -1,0 +1,12 @@
+{
+  "java_baseline": "468e9cb4296110467e3cfdafed412b3dbecfd52a",
+  "command": "py -3 scripts/java_ack_fault.py --server-jar <packaged-ripple-server.jar>",
+  "expected_defect_reproduced": true,
+  "write_response_success": true,
+  "source_ack_nodes": "[1,2]",
+  "entity_uuid": "3161fbdd-166e-4fc8-9ec0-334012c07135",
+  "discarded_bytes": 182,
+  "peer_count_before_heal": 0,
+  "peer_count_after_heal": 0,
+  "seconds_after_heal": 12.003
+}

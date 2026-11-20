@@ -1,0 +1,468 @@
+{
+  "meta": {
+    "stamp": "load-2026-11-21-004306-s3u6",
+    "ripple_pinned": "468e9cb4296110467e3cfdafed412b3dbecfd52a",
+    "ripple_head": "468e9cb4296110467e3cfdafed412b3dbecfd52a",
+    "cipple_ref": "cd188f4db3b736c4d62c510f5b92cd9f35af95b6",
+    "cipple_sha256": "849937CD4F8A3CD24B0459ECFE39B7B4C68FDFC95D8A17B0275F70FF3F13C5E1",
+    "cipple_mtime": "2026-11-20T16:25:28.0419671Z",
+    "cipple_exe": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\server\\cipple_server.exe",
+    "servers": 3,
+    "subs": 6,
+    "java_proto": "star",
+    "cpp_overlay": "star",
+    "java_event_loop_threads": 0,
+    "java_log_level": "ERROR",
+    "app": "benchapp",
+    "key": "benchkey",
+    "warmup": 5,
+    "ops": 50,
+    "gap_ms": 50,
+    "deadline_ms": 15000,
+    "value_bytes": 256,
+    "t0_ms": 1795192987511,
+    "placement": "index-mod: sub i -> nodes[i % N], pub -> nodes[0] (node 1)",
+    "java_build": "C:\\Users\\21423\\AppData\\Local\\Temp\\opencode\\ripple-baseline",
+    "probe_durable": false,
+    "measure_persist": true,
+    "java_exit": 0,
+    "cpp_exit": 0,
+    "durable_exit": -1,
+    "persist_exit": 0
+  },
+  "java": {
+    "engine": "java-ripple-native-client",
+    "observation": "t_publish=before putAsync; t_recv=after subscriber MessageService.newMessage insert (before SyncResponse). No 200ms poll in latency path. Native RippleClient with embedded SQLite; compare against C++ wire-harness profiles explicitly labelled.",
+    "nodes": "1:127.0.0.1:13301,2:127.0.0.1:13302,3:127.0.0.1:13303",
+    "placement": "index-mod: sub i -> nodes[i % N], pub -> nodes[0] (node 1)",
+    "sub_homes": [
+      "1:127.0.0.1:13301",
+      "2:127.0.0.1:13302",
+      "3:127.0.0.1:13303",
+      "1:127.0.0.1:13301",
+      "2:127.0.0.1:13302",
+      "3:127.0.0.1:13303"
+    ],
+    "pub_home": "1:127.0.0.1:13301",
+    "app": "benchapp",
+    "key": "benchkey",
+    "num_subscribers": 6,
+    "warmup_ops": 5,
+    "meas_ops": 50,
+    "gap_ms": 50,
+    "deadline_ms": 15000,
+    "value_bytes": 256,
+    "t0_ms": 1795192987511,
+    "subscribe_settle_ms": 2000,
+    "java_version": "25.0.3 Eclipse Adoptium",
+    "wall_ms": 6508,
+    "measurement_start_ms": 1795193007225,
+    "measurement_end_ms": 1795193013733,
+    "send_span_ms": 2460.4015,
+    "completed_ops": 50,
+    "goodput_ops": 7.683,
+    "coverage_pct": 100.0,
+    "received_pairs": 300,
+    "total_pairs": 300,
+    "drain_ms": 4039,
+    "p50_ms": 2088.5514,
+    "p95_ms": 3868.3007,
+    "p99_ms": 4020.9367,
+    "per_subscriber": [
+      {
+        "subscriber": 0,
+        "n": 50,
+        "p50_ms": 2012.7876,
+        "p95_ms": 3818.2077,
+        "p99_ms": 3992.5194
+      },
+      {
+        "subscriber": 1,
+        "n": 50,
+        "p50_ms": 2076.1263,
+        "p95_ms": 3872.0054,
+        "p99_ms": 4020.9367
+      },
+      {
+        "subscriber": 2,
+        "n": 50,
+        "p50_ms": 2086.1352,
+        "p95_ms": 3905.4147,
+        "p99_ms": 4039.1922
+      },
+      {
+        "subscriber": 3,
+        "n": 50,
+        "p50_ms": 2016.4003,
+        "p95_ms": 3829.1133,
+        "p99_ms": 3992.3243
+      },
+      {
+        "subscriber": 4,
+        "n": 50,
+        "p50_ms": 2070.2059,
+        "p95_ms": 3868.3007,
+        "p99_ms": 4024.6931
+      },
+      {
+        "subscriber": 5,
+        "n": 50,
+        "p50_ms": 2088.5514,
+        "p95_ms": 3922.2675,
+        "p99_ms": 4037.4375
+      }
+    ],
+    "errors": [],
+    "raw_jsonl": "java-summary.jsonl.gz"
+  },
+  "cpp_live": {
+    "engine": "cpp-wire-python(live)",
+    "observation": "t_publish=before PUT frame send; t_recv=after DISPATCH parse, before/with ACK send (live, no cursor, no store; wire harness, NOT native C++ client). Online-delivery boundary comparable to Java native online delivery.",
+    "placement": "index-mod: sub i -> servers[i % N], pub -> servers[0] (node 1)",
+    "persist_sqlite_dir": null,
+    "servers": "127.0.0.1:13401,127.0.0.1:13402,127.0.0.1:13403",
+    "sub_homes": [
+      "127.0.0.1:13401",
+      "127.0.0.1:13402",
+      "127.0.0.1:13403",
+      "127.0.0.1:13401",
+      "127.0.0.1:13402",
+      "127.0.0.1:13403"
+    ],
+    "pub_home": "127.0.0.1:13401",
+    "app": "benchapp",
+    "key": "benchkey",
+    "num_subscribers": 6,
+    "warmup_ops": 5,
+    "meas_ops": 50,
+    "gap_ms": 50,
+    "deadline_ms": 15000,
+    "value_bytes": 256,
+    "t0_ms": 1795192987511,
+    "resume_after": null,
+    "subscribe_settle_ms": 2000,
+    "subscribed": 6,
+    "measurement_start_ms": 1795193038092,
+    "measurement_end_ms": 1795193040554,
+    "send_span_ms": 2450.3395,
+    "wall_ms": 2462,
+    "completed_ops": 50,
+    "goodput_ops": 20.309,
+    "coverage_pct": 100.0,
+    "received_pairs": 300,
+    "total_pairs": 300,
+    "drain_ms": 11,
+    "p50_ms": 7.867,
+    "p95_ms": 10.334,
+    "p99_ms": 10.775,
+    "per_subscriber": [
+      {
+        "subscriber": 0,
+        "n": 50,
+        "p50_ms": 3.784,
+        "p95_ms": 4.745,
+        "p99_ms": 5.7
+      },
+      {
+        "subscriber": 1,
+        "n": 50,
+        "p50_ms": 9.109,
+        "p95_ms": 10.628,
+        "p99_ms": 12.918
+      },
+      {
+        "subscriber": 2,
+        "n": 50,
+        "p50_ms": 8.235,
+        "p95_ms": 10.155,
+        "p99_ms": 10.861
+      },
+      {
+        "subscriber": 3,
+        "n": 50,
+        "p50_ms": 3.877,
+        "p95_ms": 4.839,
+        "p99_ms": 5.788
+      },
+      {
+        "subscriber": 4,
+        "n": 50,
+        "p50_ms": 9.18,
+        "p95_ms": 10.694,
+        "p99_ms": 12.973
+      },
+      {
+        "subscriber": 5,
+        "n": 50,
+        "p50_ms": 8.13,
+        "p95_ms": 10.069,
+        "p99_ms": 10.77
+      }
+    ],
+    "errors": [],
+    "raw_jsonl": "cpp-summary.jsonl.gz"
+  },
+  "cpp_durable": null,
+  "cpp_persist": {
+    "engine": "cpp-wire-python+persist-sqlite",
+    "observation": "t_publish=before PUT frame send; t_recv=after per-subscriber SQLite INSERT OR IGNORE + commit, before/with ACK send (durable cursor + harness-side persistence; wire harness, NOT native C++ client). Comparable post-persistence boundary vs Java native insert. Bare cursor read without sqlite is NOT equivalent and is labelled separately.",
+    "placement": "index-mod: sub i -> servers[i % N], pub -> servers[0] (node 1)",
+    "persist_sqlite_dir": "C:\\Users\\21423\\AppData\\Local\\Temp\\opencode\\cipple-load-load-2026-11-21-004306-s3u6\\run\\cpp-persist",
+    "servers": "127.0.0.1:13401,127.0.0.1:13402,127.0.0.1:13403",
+    "sub_homes": [
+      "127.0.0.1:13401",
+      "127.0.0.1:13402",
+      "127.0.0.1:13403",
+      "127.0.0.1:13401",
+      "127.0.0.1:13402",
+      "127.0.0.1:13403"
+    ],
+    "pub_home": "127.0.0.1:13401",
+    "app": "benchapp",
+    "key": "benchkey-persist",
+    "num_subscribers": 6,
+    "warmup_ops": 5,
+    "meas_ops": 50,
+    "gap_ms": 50,
+    "deadline_ms": 15000,
+    "value_bytes": 256,
+    "t0_ms": 1795192987511,
+    "resume_after": 0,
+    "subscribe_settle_ms": 2000,
+    "subscribed": 6,
+    "measurement_start_ms": 1795193043623,
+    "measurement_end_ms": 1795193046095,
+    "send_span_ms": 2450.2523,
+    "wall_ms": 2472,
+    "completed_ops": 50,
+    "goodput_ops": 20.227,
+    "coverage_pct": 100.0,
+    "received_pairs": 300,
+    "total_pairs": 300,
+    "drain_ms": 20,
+    "p50_ms": 15.994,
+    "p95_ms": 20.912,
+    "p99_ms": 22.405,
+    "per_subscriber": [
+      {
+        "subscriber": 0,
+        "n": 50,
+        "p50_ms": 7.228,
+        "p95_ms": 9.825,
+        "p99_ms": 11.673
+      },
+      {
+        "subscriber": 1,
+        "n": 50,
+        "p50_ms": 18.077,
+        "p95_ms": 21.747,
+        "p99_ms": 22.158
+      },
+      {
+        "subscriber": 2,
+        "n": 50,
+        "p50_ms": 17.878,
+        "p95_ms": 22.117,
+        "p99_ms": 22.732
+      },
+      {
+        "subscriber": 3,
+        "n": 50,
+        "p50_ms": 7.953,
+        "p95_ms": 9.321,
+        "p99_ms": 9.842
+      },
+      {
+        "subscriber": 4,
+        "n": 50,
+        "p50_ms": 17.908,
+        "p95_ms": 21.047,
+        "p99_ms": 23.015
+      },
+      {
+        "subscriber": 5,
+        "n": 50,
+        "p50_ms": 17.448,
+        "p95_ms": 21.912,
+        "p99_ms": 22.405
+      }
+    ],
+    "errors": [],
+    "raw_jsonl": "cpp-persist-summary.jsonl.gz"
+  },
+  "cpu_rss": {
+    "183552|java": {
+      "samples": 67,
+      "rss_avg_mb": 235.37,
+      "rss_max_mb": 264.2,
+      "cpu_s_delta": 4.55,
+      "cpu_pct_wall": 18.02,
+      "t_first_ms": 1795193003102,
+      "t_last_ms": 1795193028332
+    },
+    "66152|java": {
+      "samples": 67,
+      "rss_avg_mb": 230.38,
+      "rss_max_mb": 256.9,
+      "cpu_s_delta": 2.7,
+      "cpu_pct_wall": 10.71,
+      "t_first_ms": 1795193003102,
+      "t_last_ms": 1795193028332
+    },
+    "186692|java": {
+      "samples": 67,
+      "rss_avg_mb": 230.4,
+      "rss_max_mb": 261.43,
+      "cpu_s_delta": 2.83,
+      "cpu_pct_wall": 11.21,
+      "t_first_ms": 1795193003102,
+      "t_last_ms": 1795193028332
+    },
+    "183104|cipple_server": {
+      "samples": 30,
+      "rss_avg_mb": 7.57,
+      "rss_max_mb": 7.71,
+      "cpu_s_delta": 0.7,
+      "cpu_pct_wall": 6.39,
+      "t_first_ms": 1795193035660,
+      "t_last_ms": 1795193046655
+    },
+    "163212|cipple_server": {
+      "samples": 30,
+      "rss_avg_mb": 7.51,
+      "rss_max_mb": 7.59,
+      "cpu_s_delta": 0.3,
+      "cpu_pct_wall": 2.7,
+      "t_first_ms": 1795193035660,
+      "t_last_ms": 1795193046655
+    },
+    "185644|cipple_server": {
+      "samples": 30,
+      "rss_avg_mb": 7.51,
+      "rss_max_mb": 7.58,
+      "cpu_s_delta": 0.2,
+      "cpu_pct_wall": 1.85,
+      "t_first_ms": 1795193035660,
+      "t_last_ms": 1795193046655
+    }
+  },
+  "cpu_rss_measurement": {
+    "java": {
+      "183552|java": {
+        "samples": 16,
+        "rss_avg_mb": 230.16,
+        "rss_max_mb": 235.33,
+        "cpu_s_delta": 2.61,
+        "cpu_pct_wall": 44.6,
+        "t_first_ms": 1795193007538,
+        "t_last_ms": 1795193013389
+      },
+      "66152|java": {
+        "samples": 16,
+        "rss_avg_mb": 225.68,
+        "rss_max_mb": 238.24,
+        "cpu_s_delta": 1.52,
+        "cpu_pct_wall": 25.9,
+        "t_first_ms": 1795193007538,
+        "t_last_ms": 1795193013389
+      },
+      "186692|java": {
+        "samples": 16,
+        "rss_avg_mb": 224.98,
+        "rss_max_mb": 238.45,
+        "cpu_s_delta": 1.58,
+        "cpu_pct_wall": 26.97,
+        "t_first_ms": 1795193007538,
+        "t_last_ms": 1795193013389
+      }
+    },
+    "cpp_live": {
+      "183104|cipple_server": {
+        "samples": 7,
+        "rss_avg_mb": 7.57,
+        "rss_max_mb": 7.59,
+        "cpu_s_delta": 0.25,
+        "cpu_pct_wall": 10.98,
+        "t_first_ms": 1795193038200,
+        "t_last_ms": 1795193040476
+      },
+      "163212|cipple_server": {
+        "samples": 7,
+        "rss_avg_mb": 7.51,
+        "rss_max_mb": 7.52,
+        "cpu_s_delta": 0.03,
+        "cpu_pct_wall": 1.37,
+        "t_first_ms": 1795193038200,
+        "t_last_ms": 1795193040476
+      },
+      "185644|cipple_server": {
+        "samples": 7,
+        "rss_avg_mb": 7.5,
+        "rss_max_mb": 7.51,
+        "cpu_s_delta": 0.03,
+        "cpu_pct_wall": 1.37,
+        "t_first_ms": 1795193038200,
+        "t_last_ms": 1795193040476
+      }
+    },
+    "cpp_persist": {
+      "183104|cipple_server": {
+        "samples": 6,
+        "rss_avg_mb": 7.66,
+        "rss_max_mb": 7.71,
+        "cpu_s_delta": 0.31,
+        "cpu_pct_wall": 15.93,
+        "t_first_ms": 1795193043946,
+        "t_last_ms": 1795193045908
+      },
+      "163212|cipple_server": {
+        "samples": 6,
+        "rss_avg_mb": 7.57,
+        "rss_max_mb": 7.59,
+        "cpu_s_delta": 0.19,
+        "cpu_pct_wall": 9.56,
+        "t_first_ms": 1795193043946,
+        "t_last_ms": 1795193045908
+      },
+      "185644|cipple_server": {
+        "samples": 6,
+        "rss_avg_mb": 7.57,
+        "rss_max_mb": 7.58,
+        "cpu_s_delta": 0.12,
+        "cpu_pct_wall": 6.37,
+        "t_first_ms": 1795193043946,
+        "t_last_ms": 1795193045908
+      }
+    }
+  },
+  "profile_legend": {
+    "java": "native RippleClient (embedded SQLite insert before SyncResponse)",
+    "cpp_live": "wire harness live, no cursor, no store (online-delivery; comparable to Java online)",
+    "cpp_durable": "wire harness durable-cursor-wire-only, NO store (NOT persistence-equivalent; do NOT delta vs Java)",
+    "cpp_persist": "wire harness durable+persist-sqlite, per-sub INSERT OR IGNORE+commit before ACK (post-persistence; comparable to Java insert)"
+  },
+  "delta_live_vs_java": {
+    "complete_deliveries_in_both_trials": true,
+    "p50_cpp_minus_java_ms": -2080.6843999999996,
+    "p95_cpp_minus_java_ms": -3857.9667,
+    "p99_cpp_minus_java_ms": -4010.1617,
+    "goodput_cpp_minus_java": 12.626,
+    "coverage_cpp_minus_java_pp": 0.0
+  },
+  "delta": {
+    "complete_deliveries_in_both_trials": true,
+    "p50_cpp_minus_java_ms": -2080.6843999999996,
+    "p95_cpp_minus_java_ms": -3857.9667,
+    "p99_cpp_minus_java_ms": -4010.1617,
+    "goodput_cpp_minus_java": 12.626,
+    "coverage_cpp_minus_java_pp": 0.0
+  },
+  "delta_persist_vs_java": {
+    "complete_deliveries_in_both_trials": true,
+    "p50_cpp_minus_java_ms": -2072.5573999999997,
+    "p95_cpp_minus_java_ms": -3847.3887,
+    "p99_cpp_minus_java_ms": -3998.5317,
+    "goodput_cpp_minus_java": 12.544,
+    "coverage_cpp_minus_java_pp": 0.0
+  }
+}

@@ -1,0 +1,18 @@
+{
+  "baseline": "2387f44e813d7ecdcfa2f0c9b965296df4938b62",
+  "os": "Windows 11 26300, PowerShell 7.7.0",
+  "cpu": "Intel Core Ultra 9 275HX",
+  "logical_processors": 24,
+  "memory_bytes": 68379590656,
+  "cmake": "4.4.2",
+  "ninja": "1.13.2",
+  "compiler": "UCRT64 GCC 15.2.0 Rev14",
+  "boost": "1.91.0",
+  "sqlite": "3.53.0",
+  "configuration": "Release, source from git archive",
+  "ctest_passed": 41,
+  "ctest_total": 41,
+  "ctest_wall_seconds": 3.14,
+  "process_smoke": "PUT, GET, push, kill/restart, re-subscribe, delete, kill/restart, delete remains",
+  "sqlite_integrity_check": "ok"
+}

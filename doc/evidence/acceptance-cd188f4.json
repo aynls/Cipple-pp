@@ -1,0 +1,298 @@
+{
+  "started": "2026-11-21 00:57:51",
+  "root": "D:\\UCAS\\OOPLab\\Cipple++",
+  "cipple_head": "cd188f4db3b736c4d62c510f5b92cd9f35af95b6",
+  "frozen_revision": "cd188f4db3b736c4d62c510f5b92cd9f35af95b6",
+  "ripple_dir": "D:\\UCAS\\OOPLab\\Ripple",
+  "ripple_head": "468e9cb4296110467e3cfdafed412b3dbecfd52a",
+  "cipple_status": "M .gitignore\n?? README.md\n?? doc/behavior.md\n?? doc/delivery.md\n?? doc/evidence/\n?? experiments/\n?? scripts/cpp_ack_fault.py\n?? tests/acceptance/",
+  "ripple_status": "M .gitignore\n?? scripts/\n?? 报告逻辑线.md\n?? 源码阅读笔记.md\n?? 阅读.md",
+  "bin_path": "D:\\msys2\\ucrt64\\bin",
+  "server": {
+    "path": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\server\\cipple_server.exe",
+    "sha256": "849937cd4f8a3cd24b0459ecfe39b7b4c68fdfc95d8a17b0275f70ff3f13c5e1"
+  },
+  "client": {
+    "path": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe",
+    "sha256": "9b286985f2a8c2f685703a647421761a16faf702e3343bddfaa7235d098a4796"
+  },
+  "output": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4",
+  "work": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work",
+  "json_path": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\report.json",
+  "text_path": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\report.txt",
+  "sha_path": "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\SHA256SUMS.txt",
+  "exit_code": 0,
+  "cases": [
+    {
+      "name": "frozen_revision",
+      "status": "pass",
+      "detail": "候选 HEAD 与指定的冻结修订一致。",
+      "commands": [
+        "git rev-parse HEAD"
+      ],
+      "observations": [
+        "cd188f4db3b736c4d62c510f5b92cd9f35af95b6",
+        "cd188f4db3b736c4d62c510f5b92cd9f35af95b6"
+      ]
+    },
+    {
+      "name": "oracle_contract",
+      "status": "pass",
+      "detail": "纯函数预言覆盖增量折叠、删除遮蔽、重复 UUID 和 (HLC, server id, UUID) 排序。",
+      "commands": [],
+      "observations": [
+        "remove_entry 删除全部字面量，空片段不改变原文，与 Java String.replace 一致",
+        "同一增量 UUID 第二次吸收被忽略；可见值保持 base+inc，而不是 base+inc+inc",
+        "删除赢得可见值，但增量仍留在日志里",
+        "排序键是 (HLC, server id, UUID)；更低的 HLC 不能把已删除的值写回来"
+      ]
+    },
+    {
+      "name": "proxy_drop_once",
+      "status": "pass",
+      "detail": "本地代理能在转发 SyncRequest 之后丢弃恰好一帧成功的 SyncResponse，然后恢复转发。",
+      "commands": [],
+      "observations": [
+        "upstream=58092",
+        "proxy=58093",
+        "first response withheld=True",
+        "upstream saw 1 request(s)",
+        "dropped=1 refusing=True",
+        "second type=5 result=0",
+        "第二次 SyncResponse 被转发，丢弃计数保持为 1。"
+      ]
+    },
+    {
+      "name": "cli_usage",
+      "status": "pass",
+      "detail": "记录当前二进制在无参数时公布的用法，后续断言都以此为准。",
+      "commands": [
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\server\\cipple_server.exe",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe"
+      ],
+      "observations": [
+        "server exit=2",
+        "Usage: cipple_server <port> <database> [--bind <ip>] [--id <id>]\n       [--peers <id@ip:port,...>] [--overlay mesh|star] [--clock-offset-ms <ms>]",
+        "client exit=2",
+        "Expected endpoints, command, application and key\nUsage: cipple_client [OPTIONS] PORT|IP:PORT[,IP:PORT...] put APP KEY VALUE\n       cipple_client [OPTIONS] ENDPOINT get|get-base|delete APP KEY\n       cipple_client [OPTIONS] ENDPOINT incremental APP KEY BASE_UUID add_entry|remove_entry VALUE\n       cipple_client [--state DB] [--unsubscribe-after COUNT] ENDPOINT subscribe APP KEY\nOptions: --selector ordered|hash, --timeout-ms MS, --verbose\n         --request-id UUID (write on one endpoint)\n         --heartbeat-ms MS (subscribe, defaults to 1000 with --state)\nCtrl+C unsubscribes on the active subscription connection."
+      ]
+    },
+    {
+      "name": "cli_crud_incremental",
+      "status": "pass",
+      "detail": "CLI 完成了写入、读回、get-base、remove_entry 全量折叠、缺基线拒绝和删除。",
+      "commands": [
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-000000000011 127.0.0.1:60971 put acc fold a-x-x-b",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:60971 get acc fold",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:60971 get-base acc fold",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-000000000012 127.0.0.1:60971 incremental acc fold 00000000-0000-4000-8000-000000000011 remove_entry -x",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:60971 get acc fold",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-000000000013 127.0.0.1:60971 incremental acc fold 14556ba9-9253-49eb-b5d8-911546d02341 add_entry z",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 0b6c2c4b-92c0-4d02-a9f4-637db88af9c3 127.0.0.1:60971 delete acc fold",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:60971 get acc fold"
+      ],
+      "observations": [
+        "exit=0 stdout='OK\\n' stderr=''",
+        "exit=0 stdout='a-x-x-b\\n' stderr=''",
+        "exit=0 stdout='00000000-0000-4000-8000-000000000011\\n' stderr=''",
+        "exit=0 stdout='OK\\n' stderr=''",
+        "exit=0 stdout='a-b\\n' stderr=''",
+        "exit=1 stdout='' stderr='Request rejected'",
+        "缺少基线的增量被拒绝，已有折叠结果保持 a-b。",
+        "exit=0 stdout='OK\\n' stderr=''",
+        "exit=1 stdout='' stderr='Configuration not found'"
+      ]
+    },
+    {
+      "name": "cli_idempotent_put",
+      "status": "pass",
+      "detail": "同一 UUID 只有负载一致才算成功重试，值保持 v1；空字符串和缺失是两种状态。",
+      "commands": [
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-000000000021 127.0.0.1:60971 put acc dup v1",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-000000000021 127.0.0.1:60971 put acc dup v2",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-000000000021 127.0.0.1:60971 put acc dup v1",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:60971 get acc dup",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 72693024-1c65-4335-8e3e-c6892748bb56 127.0.0.1:60971 put acc empty \"\"",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:60971 get acc empty"
+      ],
+      "observations": [
+        "exit=0 stdout='OK\\n' stderr=''",
+        "exit=1 stdout='' stderr='Request rejected'",
+        "不同负载被拒绝: Request rejected",
+        "exit=0 stdout='OK\\n' stderr=''",
+        "exit=0 stdout='v1\\n' stderr=''",
+        "exit=0 stdout='OK\\n' stderr=''",
+        "exit=0 stdout='\\n' stderr=''"
+      ]
+    },
+    {
+      "name": "protocol_subscription",
+      "status": "pass",
+      "detail": "长度前缀保留 NUL；会话内订阅只接收目标键，退订后停止推送。",
+      "commands": [],
+      "observations": [
+        "nul visible=b'a\\x00b'",
+        "subscribe=True",
+        "dispatch value=b'one' uuid=6597d95e-39d2-48d0-b269-85a0a8dd3040"
+      ]
+    },
+    {
+      "name": "subscriber_ack",
+      "status": "pass",
+      "detail": "不回执会在约 2 秒后断开会话；用原游标重连会重放，回执后不再重复。",
+      "commands": [],
+      "observations": [
+        "subscribe=True",
+        "first sequence=10 uuid=21f858bf-60ef-403f-8e33-26153787e9e2",
+        "withheld ack ended the session: ConnectionResetError: [WinError 10054] 远程主机强迫关闭了一个现有的连接。",
+        "replay uuid=21f858bf-60ef-403f-8e33-26153787e9e2 sequence=10"
+      ]
+    },
+    {
+      "name": "masked_increment_catchup",
+      "status": "pass",
+      "detail": "可见值已被删除遮蔽，但日志和重连补发都保留了那条增量，并且最终补到删除。",
+      "commands": [
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --state C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\m4\\subscriber.db --timeout-ms 15000 127.0.0.1:60971 subscribe acc mask",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --request-id 00000000-0000-4000-8000-000000000031 --timeout-ms 8000 127.0.0.1:60971 put acc mask base",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-000000000032 127.0.0.1:60971 incremental acc mask 00000000-0000-4000-8000-000000000031 add_entry +inc",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-000000000033 127.0.0.1:60971 delete acc mask",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:60971 get acc mask",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --state C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\m4\\subscriber.db --timeout-ms 15000 127.0.0.1:60971 subscribe acc mask"
+      ],
+      "observations": [
+        "put exit=0 stdout='OK\\n' stderr=''",
+        "exit=0 stdout='OK\\n' stderr=''",
+        "exit=0 stdout='OK\\n' stderr=''",
+        "exit=1 stdout='' stderr='Configuration not found'",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\m4\\node.db\n  message uuid=00000000-0000-4000-8000-000000000011 op=update atomic=None hlc=4729335844055744512 server=1 base= value='a-x-x-b'\n  message uuid=00000000-0000-4000-8000-000000000012 op=incremental_update atomic=remove_entry hlc=4729335844064264192 server=1 base=00000000-0000-4000-8000-000000000011 value='-x'\n  message uuid=0b6c2c4b-92c0-4d02-a9f4-637db88af9c3 op=delete atomic=None hlc=4729335844071931904 server=1 base= value=None\n  message uuid=00000000-0000-4000-8000-000000000021 op=update atomic=None hlc=4729335844077240320 server=1 base= value='v1'\n  message uuid=72693024-1c65-4335-8e3e-c6892748bb56 op=update atomic=None hlc=4729335844088184832 server=1 base= value=''\n  message uuid=0e7ac020-b17f-4756-b042-4d117186e4b4 op=update atomic=None hlc=4729335844093558784 server=1 base= value='a\\x00b'\n  message uuid=6597d95e-39d2-48d0-b269-85a0a8dd3040 op=update atomic=None hlc=4729335844093755392 server=1 base= value='one'\n  message uuid=d9441d5b-f227-4138-84e4-52a1e1eca270 op=update atomic=None hlc=4729335844093952000 server=1 base= value='nope'\n  message uuid=e92d280a-0ba5-4d8d-8913-dd8353d8252b op=update atomic=None hlc=4729335844120952832 server=1 base= value='two'\n  message uuid=21f858bf-60ef-403f-8e33-26153787e9e2 op=update atomic=None hlc=4729335844148543488 server=1 base= value='durable'\n  message uuid=00000000-0000-4000-8000-000000000031 op=update atomic=None hlc=4729335844350984192 server=1 base= value='base'\n  message uuid=00000000-0000-4000-8000-000000000032 op=incremental_update atomic=add_entry hlc=4729335844355178496 server=1 base=00000000-0000-4000-8000-000000000031 value='+inc'\n  message uuid=00000000-0000-4000-8000-000000000033 op=delete atomic=None hlc=4729335844358651904 server=1 base= value=None\n  journal seq=1 uuid=00000000-0000-4000-8000-000000000011\n  journal seq=2 uuid=00000000-0000-4000-8000-000000000012\n  journal seq=3 uuid=0b6c2c4b-92c0-4d02-a9f4-637db88af9c3\n  journal seq=4 uuid=00000000-0000-4000-8000-000000000021\n  journal seq=5 uuid=72693024-1c65-4335-8e3e-c6892748bb56\n  journal seq=6 uuid=0e7ac020-b17f-4756-b042-4d117186e4b4\n  journal seq=7 uuid=6597d95e-39d2-48d0-b269-85a0a8dd3040\n  journal seq=8 uuid=d9441d5b-f227-4138-84e4-52a1e1eca270\n  journal seq=9 uuid=e92d280a-0ba5-4d8d-8913-dd8353d8252b\n  journal seq=10 uuid=21f858bf-60ef-403f-8e33-26153787e9e2\n  journal seq=11 uuid=00000000-0000-4000-8000-000000000031\n  journal seq=12 uuid=00000000-0000-4000-8000-000000000032\n  journal seq=13 uuid=00000000-0000-4000-8000-000000000033",
+        "stdout after resume:\nSubscribed\nbase+inc\n<deleted>\n",
+        "stderr after resume:\nConnected to 127.0.0.1:60971\n"
+      ]
+    },
+    {
+      "name": "put_rtt",
+      "status": "pass",
+      "detail": "单连接顺序 put 的往返时间。Java 进程这次没有启动，避免往 Ripple 工作区写入构建产物。",
+      "commands": [],
+      "observations": [
+        "n=30 min=2.922ms p50=2.998ms max=4.004ms"
+      ]
+    },
+    {
+      "name": "durable_restart",
+      "status": "pass",
+      "detail": "写入返回成功之后进程被终止，原数据库重新打开仍能读回该值。",
+      "commands": [
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --request-id 00000000-0000-4000-8000-000000000041 --timeout-ms 8000 127.0.0.1:59889 put acc keep kept",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59891 get acc keep"
+      ],
+      "observations": [
+        "put exit=0 stdout='OK\\n' stderr=''",
+        "server killed after OK; database file retained",
+        "get exit=0 stdout='kept\\n' stderr=''",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\m4\\restart.db\n  message uuid=00000000-0000-4000-8000-000000000041 op=update atomic=None hlc=4729335844392468480 server=1 base= value='kept'\n  journal seq=1 uuid=00000000-0000-4000-8000-000000000041"
+      ]
+    },
+    {
+      "name": "node_failover",
+      "status": "pass",
+      "detail": "客户端按给定端点顺序跳过拒绝连接的节点，连到下一个存活节点。这是现有 Connector 的确定性行为，不是 Java 那种在哈希候选里随机挑选。",
+      "commands": [
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --verbose 127.0.0.1:59903,127.0.0.1:59895 get acc cfg"
+      ],
+      "observations": [
+        "Connected to 127.0.0.1:59895"
+      ]
+    },
+    {
+      "name": "cluster_fault",
+      "status": "pass",
+      "detail": "增量在部分节点持久化、确认帧被精确丢弃、源节点带库重启、分区愈合和离线订阅者补发之后只存在一份；删除遮蔽了可见值，但没有抹掉增量。",
+      "commands": [
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\server\\cipple_server.exe 59894 C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\cluster\\a.db --bind 127.0.0.1 --id 1 --peers 2@127.0.0.1:59897,3@127.0.0.1:59898 --overlay star --clock-offset-ms 0",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\server\\cipple_server.exe 59895 C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\cluster\\b.db --bind 127.0.0.1 --id 2 --peers 1@127.0.0.1:59899,3@127.0.0.1:59900 --overlay star --clock-offset-ms 0",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\server\\cipple_server.exe 59896 C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\cluster\\c.db --bind 127.0.0.1 --id 3 --peers 1@127.0.0.1:59901,2@127.0.0.1:59902 --overlay star --clock-offset-ms -86400000",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-0000000000a4 127.0.0.1:59896 put acc cfg skew",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-0000000000a1 127.0.0.1:59894 put acc cfg base",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59895 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59895 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59894 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --verbose 127.0.0.1:59903,127.0.0.1:59895 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --state C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\cluster\\subscriber.db --timeout-ms 20000 127.0.0.1:59895 subscribe acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-0000000000a2 127.0.0.1:59894 incremental acc cfg 00000000-0000-4000-8000-0000000000a1 add_entry +inc",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59895 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59895 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\server\\cipple_server.exe 59894 C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\cluster\\a.db --bind 127.0.0.1 --id 1 --peers 2@127.0.0.1:59897,3@127.0.0.1:59898 --overlay star --clock-offset-ms 0",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59895 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-0000000000a3 127.0.0.1:59894 delete acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59895 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --state C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\cluster\\subscriber.db --timeout-ms 20000 127.0.0.1:59895 subscribe acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-0000000000a2 127.0.0.1:59894 incremental acc cfg 00000000-0000-4000-8000-0000000000a1 add_entry +inc",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59895 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59896 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59896 get acc cfg",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:59894 get acc cfg"
+      ],
+      "observations": [
+        "ports A=59894 B=59895 C=59896 dead=59903",
+        "proxies ab=59897 ba=59899 ac=59898 ca=59901 bc=59900 cb=59902",
+        "C 方向的四条代理从启动起拒绝连接；A-B 保持连通，直到增量的持久化确认被丢弃。",
+        "skew put exit=0 stdout='OK\\n' stderr=''",
+        "base put exit=0 stdout='OK\\n' stderr=''",
+        "failover exit=0 stdout='base\\n' stderr='Connected to 127.0.0.1:59895'",
+        "subscriber saw base, then went offline with its cursor database kept",
+        "incremental put exit=0 stdout='OK\\n' stderr=''",
+        "dropped_confirmations=1 refusing=True ack_b=0",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\cluster\\b.db\n  message uuid=00000000-0000-4000-8000-0000000000a1 op=update atomic=None hlc=4729335844427137024 server=1 base= value='base'\n  message uuid=00000000-0000-4000-8000-0000000000a2 op=incremental_update atomic=add_entry hlc=4729335844605067264 server=1 base=00000000-0000-4000-8000-0000000000a1 value='+inc'\n  journal seq=1 uuid=00000000-0000-4000-8000-0000000000a1\n  journal seq=2 uuid=00000000-0000-4000-8000-0000000000a2",
+        "killed A after the dropped confirmation; database retained",
+        "ack_b_after_restart=1 inc_rows_b=1",
+        "delete exit=0 stdout='OK\\n' stderr=''",
+        "duplicate incremental exit=0 stdout='OK\\n' stderr=''",
+        "resume stdout:\nSubscribed\nbase+inc\n<deleted>\n",
+        "resume stderr:\nConnected to 127.0.0.1:59895\n",
+        "skew_hlc=4729330182113460224 delete_hlc=4729335844649238528",
+        "c-proxy accepts before=(47, 46, 47, 46) after=(48, 47, 48, 47)",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\cluster\\a.db\n  message uuid=00000000-0000-4000-8000-0000000000a4 op=update atomic=None hlc=4729330182113460224 server=3 base= value='skew'\n  message uuid=00000000-0000-4000-8000-0000000000a1 op=update atomic=None hlc=4729335844427137024 server=1 base= value='base'\n  message uuid=00000000-0000-4000-8000-0000000000a2 op=incremental_update atomic=add_entry hlc=4729335844605067264 server=1 base=00000000-0000-4000-8000-0000000000a1 value='+inc'\n  message uuid=00000000-0000-4000-8000-0000000000a3 op=delete atomic=None hlc=4729335844649238528 server=1 base= value=None\n  ack uuid=00000000-0000-4000-8000-0000000000a1 node=2 acknowledged=1\n  ack uuid=00000000-0000-4000-8000-0000000000a2 node=2 acknowledged=1\n  ack uuid=00000000-0000-4000-8000-0000000000a3 node=2 acknowledged=1\n  ack uuid=00000000-0000-4000-8000-0000000000a1 node=3 acknowledged=1\n  ack uuid=00000000-0000-4000-8000-0000000000a2 node=3 acknowledged=1\n  ack uuid=00000000-0000-4000-8000-0000000000a3 node=3 acknowledged=1\n  journal seq=1 uuid=00000000-0000-4000-8000-0000000000a1\n  journal seq=2 uuid=00000000-0000-4000-8000-0000000000a2\n  journal seq=3 uuid=00000000-0000-4000-8000-0000000000a3\n  journal seq=4 uuid=00000000-0000-4000-8000-0000000000a4",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\cluster\\b.db\n  message uuid=00000000-0000-4000-8000-0000000000a4 op=update atomic=None hlc=4729330182113460224 server=3 base= value='skew'\n  message uuid=00000000-0000-4000-8000-0000000000a1 op=update atomic=None hlc=4729335844427137024 server=1 base= value='base'\n  message uuid=00000000-0000-4000-8000-0000000000a2 op=incremental_update atomic=add_entry hlc=4729335844605067264 server=1 base=00000000-0000-4000-8000-0000000000a1 value='+inc'\n  message uuid=00000000-0000-4000-8000-0000000000a3 op=delete atomic=None hlc=4729335844649238528 server=1 base= value=None\n  journal seq=1 uuid=00000000-0000-4000-8000-0000000000a1\n  journal seq=2 uuid=00000000-0000-4000-8000-0000000000a2\n  journal seq=3 uuid=00000000-0000-4000-8000-0000000000a3\n  journal seq=4 uuid=00000000-0000-4000-8000-0000000000a4",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\cluster\\c.db\n  message uuid=00000000-0000-4000-8000-0000000000a4 op=update atomic=None hlc=4729330182113460224 server=3 base= value='skew'\n  message uuid=00000000-0000-4000-8000-0000000000a1 op=update atomic=None hlc=4729335844427137024 server=1 base= value='base'\n  message uuid=00000000-0000-4000-8000-0000000000a2 op=incremental_update atomic=add_entry hlc=4729335844605067264 server=1 base=00000000-0000-4000-8000-0000000000a1 value='+inc'\n  message uuid=00000000-0000-4000-8000-0000000000a3 op=delete atomic=None hlc=4729335844649238528 server=1 base= value=None\n  ack uuid=00000000-0000-4000-8000-0000000000a4 node=1 acknowledged=1\n  ack uuid=00000000-0000-4000-8000-0000000000a4 node=2 acknowledged=1\n  journal seq=1 uuid=00000000-0000-4000-8000-0000000000a4\n  journal seq=2 uuid=00000000-0000-4000-8000-0000000000a1\n  journal seq=3 uuid=00000000-0000-4000-8000-0000000000a2\n  journal seq=4 uuid=00000000-0000-4000-8000-0000000000a3",
+        "proxy ab c2s type=4 rpc=6a90410c-7636-4ae2-a9f1-481078b49f69 entity=00000000-0000-4000-8000-0000000000a1 dropped=False",
+        "proxy ab s2c type=5 rpc=6a90410c-7636-4ae2-a9f1-481078b49f69 result=0 dropped=False",
+        "proxy ab c2s type=4 rpc=d0b776d7-728e-487b-bfdf-0a2633872f39 entity=00000000-0000-4000-8000-0000000000a2 dropped=False",
+        "proxy ab s2c type=5 rpc=d0b776d7-728e-487b-bfdf-0a2633872f39 result=0 dropped=True",
+        "proxy ab c2s type=4 rpc=ee4a416b-525e-4d8f-a39c-73cee1f4289a entity=00000000-0000-4000-8000-0000000000a2 dropped=False",
+        "proxy ab s2c type=5 rpc=ee4a416b-525e-4d8f-a39c-73cee1f4289a result=1 dropped=False",
+        "proxy ab c2s type=4 rpc=318669da-e20a-4f77-861d-63e1dc1ae803 entity=00000000-0000-4000-8000-0000000000a3 dropped=False",
+        "proxy ab s2c type=5 rpc=318669da-e20a-4f77-861d-63e1dc1ae803 result=0 dropped=False"
+      ]
+    },
+    {
+      "name": "mesh_survivor",
+      "status": "pass",
+      "detail": "A 在 B 落盘后保持死亡，只接通 B 与 C 后两边收敛到同一版本；A 对 C 的确认仍是 0。",
+      "commands": [
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\server\\cipple_server.exe 61550 C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\mesh\\a.db --bind 127.0.0.1 --id 1 --peers 2@127.0.0.1:61553,3@127.0.0.1:61554 --overlay mesh --clock-offset-ms 0",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\server\\cipple_server.exe 61551 C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\mesh\\b.db --bind 127.0.0.1 --id 2 --peers 1@127.0.0.1:61555,3@127.0.0.1:61556 --overlay mesh --clock-offset-ms 0",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\server\\cipple_server.exe 61552 C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\mesh\\c.db --bind 127.0.0.1 --id 3 --peers 1@127.0.0.1:61557,2@127.0.0.1:61558 --overlay mesh --clock-offset-ms 0",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 --request-id 00000000-0000-4000-8000-0000000000b1 127.0.0.1:61550 put mesh held mesh-held",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:61551 get mesh held",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:61551 get mesh held",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:61552 get mesh held",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:61552 get mesh held",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-rc-check-7cd0d7ce\\source\\build\\client\\cipple_client.exe --timeout-ms 8000 127.0.0.1:61551 get mesh held"
+      ],
+      "observations": [
+        "ports A=61550 B=61551 C=61552",
+        "proxies ab=61553 ba=61555 ac=61554 ca=61557 bc=61556 cb=61558",
+        "C 从启动起被四条代理隔离。A 只在 B 落盘后被终止，之后不再启动。",
+        "put exit=0 stdout='OK\\n' stderr=''",
+        "killed A pid=172132 exit=1; A stays down",
+        "reopened only B-C; A-B and A-C stay refused",
+        "C visible='mesh-held' ack_b_for_c=1 ack_a_for_c=0 rows A/B/C=1/1/1 A exit=1",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\mesh\\a.db\n  message uuid=00000000-0000-4000-8000-0000000000b1 op=update atomic=None hlc=4729335844807507968 server=1 base= value='mesh-held'\n  ack uuid=00000000-0000-4000-8000-0000000000b1 node=2 acknowledged=1\n  ack uuid=00000000-0000-4000-8000-0000000000b1 node=3 acknowledged=0\n  journal seq=1 uuid=00000000-0000-4000-8000-0000000000b1",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\mesh\\b.db\n  message uuid=00000000-0000-4000-8000-0000000000b1 op=update atomic=None hlc=4729335844807507968 server=1 base= value='mesh-held'\n  ack uuid=00000000-0000-4000-8000-0000000000b1 node=3 acknowledged=1\n  journal seq=1 uuid=00000000-0000-4000-8000-0000000000b1",
+        "C:\\Users\\21423\\AppData\\Local\\Temp\\cipple-acceptance-cd188f4\\work\\mesh\\c.db\n  message uuid=00000000-0000-4000-8000-0000000000b1 op=update atomic=None hlc=4729335844807507968 server=1 base= value='mesh-held'\n  journal seq=1 uuid=00000000-0000-4000-8000-0000000000b1"
+      ]
+    }
+  ]
+}
