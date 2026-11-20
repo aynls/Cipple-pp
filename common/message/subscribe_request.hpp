@@ -13,6 +13,7 @@ namespace cipple::tcp
 namespace cipple::message
 {
   // type(12) + uuid + applicationName + key + callbackAddress + int32 callbackPort
+  // callbackAddress 为空、callbackPort 为 0 时，在当前 TCP 会话上接收推送。
   class SubscribeRequest final : public Message
   {
   public:

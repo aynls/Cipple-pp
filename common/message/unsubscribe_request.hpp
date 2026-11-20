@@ -13,6 +13,7 @@ namespace cipple::tcp
 namespace cipple::message
 {
   // type(14) + uuid + applicationName + key + callbackAddress + int32 callbackPort
+  // callbackAddress 为空、callbackPort 为 0 时，取消当前 TCP 会话的订阅。
   class UnsubscribeRequest final : public Message
   {
   public:

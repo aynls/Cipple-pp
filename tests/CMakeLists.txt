@@ -12,6 +12,7 @@ add_executable(cipple_tests
         buffer_writer_test.cpp
         sqlite_storage_test.cpp
         tcp_transport_test.cpp
+        single_server_test.cpp
 )
 
 target_link_libraries(cipple_tests PRIVATE
