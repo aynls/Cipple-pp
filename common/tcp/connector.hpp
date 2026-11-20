@@ -3,10 +3,12 @@
 #include <boost/asio/steady_timer.hpp>
 
 #include <chrono>
+#include <cstddef>
 #include <cstdint>
 #include <functional>
 #include <memory>
 #include <optional>
+#include <vector>
 
 #include "tcp/session.hpp"
 
@@ -36,7 +38,13 @@ namespace cipple::tcp
     static std::shared_ptr<Connector> start(boost::asio::io_context& context,
                                            boost::asio::ip::tcp::endpoint endpoint,
                                            ConnectorHandlers handlers, ConnectorOptions options = {});
+    // Tries endpoints in the supplied order, rotating after failures.
+    static std::shared_ptr<Connector> start_any(boost::asio::io_context& context,
+                                               std::vector<boost::asio::ip::tcp::endpoint> endpoints,
+                                               ConnectorHandlers handlers, ConnectorOptions options = {});
     ~Connector() noexcept;
+
+    const boost::asio::ip::tcp::endpoint& endpoint() const noexcept;
 
     // Cancels the current attempt or retry and closes the active session.
     void stop();
@@ -50,7 +58,7 @@ namespace cipple::tcp
       kStopped,
     };
 
-    Connector(boost::asio::io_context& context, boost::asio::ip::tcp::endpoint endpoint,
+    Connector(boost::asio::io_context& context, std::vector<boost::asio::ip::tcp::endpoint> endpoints,
                ConnectorHandlers handlers, ConnectorOptions options);
 
     void connect();
@@ -60,7 +68,9 @@ namespace cipple::tcp
     void wait_to_retry();
 
     boost::asio::io_context& _context;
-    boost::asio::ip::tcp::endpoint _endpoint;
+    std::vector<boost::asio::ip::tcp::endpoint> _endpoints;
+    std::size_t _endpoint_index = 0;
+    std::size_t _attempts_in_round = 0;
     ConnectorHandlers _handlers;
     ConnectorOptions _options;
     std::chrono::steady_clock::duration _next_retry_delay;

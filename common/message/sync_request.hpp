@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include <optional>
 
 #include "entity/entity_message.hpp"
 #include "message/message.hpp"
@@ -17,10 +18,12 @@ namespace cipple::message
   class SyncRequest final : public Message
   {
   public:
-    SyncRequest(Uuid uuid, entity::EntityMessage entity, std::int32_t from_id);
+    SyncRequest(Uuid uuid, entity::EntityMessage entity, std::int32_t from_id,
+                std::optional<entity::EntityMessage> base = std::nullopt);
 
     const entity::EntityMessage& entity() const noexcept;
     std::int32_t from_id() const noexcept;
+    const std::optional<entity::EntityMessage>& base() const noexcept;
 
     static std::unique_ptr<SyncRequest> decode(tcp::BufferReader& reader);
 
@@ -30,5 +33,6 @@ namespace cipple::message
   private:
     entity::EntityMessage _entity;
     std::int32_t _from_id;
+    std::optional<entity::EntityMessage> _base;
   };
 }

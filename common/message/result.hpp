@@ -8,5 +8,6 @@ namespace cipple::message
   {
     kSuccess = 0,
     kDuplicated = 1,
+    kRejected = 2,
   };
 }

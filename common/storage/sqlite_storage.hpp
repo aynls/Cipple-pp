@@ -26,7 +26,12 @@ namespace cipple::storage
     std::optional<entity::EntityMessage> latest(std::string_view application_name,
                                                 std::string_view key) const override;
     std::expected<entity::EntityMessage, MessageUnavailable> find_message(const Uuid& uuid) const override;
-    std::vector<entity::EntityMessage> pending_for_node(std::int32_t node_id) const override;
+    std::vector<entity::EntityMessage> pending_for_node(std::int32_t node_id, std::int64_t limit = 0) const override;
+    std::vector<Uuid> pending_ids_for_node(std::int32_t node_id, std::int64_t limit) const override;
+    std::vector<JournalEntry> journal_after(std::string_view application_name, std::string_view key,
+                                           std::int64_t after, std::int64_t limit) const override;
+    std::int64_t journal_sequence(const Uuid& uuid) const override;
+    std::int64_t version_watermark() const override;
     std::size_t recycle(std::string_view application_name, std::string_view key,
                         std::size_t keep_latest) override;
 

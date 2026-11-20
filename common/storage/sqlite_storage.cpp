@@ -55,6 +55,21 @@ namespace cipple::storage
         ON message(application_name, key, last_update, last_update_server_id, uuid)
         WHERE retained = 1;
       CREATE INDEX IF NOT EXISTS ack_pending ON ack(node_id, message_uuid) WHERE acknowledged = 0;
+
+      CREATE TABLE IF NOT EXISTS delivery_log (
+        sequence INTEGER PRIMARY KEY,
+        message_uuid BLOB NOT NULL UNIQUE REFERENCES message(uuid),
+        application_name BLOB NOT NULL,
+        key BLOB NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS delivery_log_topic ON delivery_log(application_name, key, sequence);
+    )sql";
+
+    constexpr std::string_view kPendingForNode = R"sql(
+      JOIN ack AS a ON a.message_uuid = m.uuid
+      WHERE a.node_id = ?1 AND a.acknowledged = 0 AND m.retained = 1
+      ORDER BY m.last_update, m.last_update_server_id, m.uuid
+      LIMIT ?2
     )sql";
 
     [[noreturn]] void throw_sqlite(sqlite3* db, const int error, const char* operation)
@@ -240,6 +255,17 @@ namespace cipple::storage
       insert.execute();
     }
 
+    void record_delivery(sqlite3* db, const EntityMessage& message)
+    {
+      const Statement insert{db, R"sql(
+        INSERT INTO delivery_log(application_name, key, message_uuid) VALUES (?1, ?2, ?3)
+        ON CONFLICT(message_uuid) DO NOTHING
+      )sql"};
+      bind_key(insert, message.application_name(), message.key());
+      insert.bind(3, message.uuid());
+      insert.execute();
+    }
+
     void insert_message(sqlite3* db, const EntityMessage& message)
     {
       const Statement insert{db, R"sql(
@@ -263,6 +289,7 @@ namespace cipple::storage
         insert.bind_text(9, entity::atomic_operation_wire_name(delta->atomic_operation));
       }
       insert.execute();
+      record_delivery(db, message);
     }
 
     bool ensure_base(sqlite3* db, const EntityMessage& message, const Uuid& base_uuid,
@@ -280,7 +307,7 @@ namespace cipple::storage
 
       {
         const Statement query{db, R"sql(
-          SELECT application_name, key, operation_type, last_update, last_update_server_id, retained
+          SELECT application_name, key, operation_type, last_update, last_update_server_id, retained, value
           FROM message WHERE uuid = ?1
         )sql"};
         query.bind(1, base_uuid);
@@ -305,7 +332,7 @@ namespace cipple::storage
         }
         if (query.integer(5) == 1)
         {
-          return true;
+          return !supplied_update || query.bytes(6) == supplied_update->value;
         }
       }
 
@@ -317,16 +344,21 @@ namespace cipple::storage
       restore.bind_bytes(1, supplied_update->value);
       restore.bind(2, base_uuid);
       restore.execute();
+    record_delivery(db, *supplied_base);
       return true;
     }
 
-    std::string select_messages(const std::string_view suffix)
+    std::string select_messages(const std::string_view suffix, const bool journal = false)
     {
       std::string sql = R"sql(
         SELECT m.uuid, m.application_name, m.key, m.last_update, m.last_update_server_id,
                m.operation_type, m.value, m.base_message_uuid, m.atomic_operation, m.retained
-        FROM message AS m
       )sql";
+      if (journal)
+      {
+        sql.append(", d.sequence");
+      }
+      sql.append(" FROM message AS m ");
       sql.append(suffix);
       return sql;
     }
@@ -398,6 +430,27 @@ namespace cipple::storage
     }
     const Transaction transaction{db};
     execute_sql(db, kSchema, "initialize storage schema");
+    auto schema_version = 0;
+    {
+      const Statement version{db, "PRAGMA user_version"};
+      if (version.next())
+      {
+        schema_version = static_cast<int>(version.integer(0));
+      }
+    }
+    if (schema_version == 0)
+    {
+      execute_sql(db, R"sql(
+        INSERT INTO delivery_log(message_uuid, application_name, key)
+          SELECT uuid, application_name, key FROM message WHERE retained = 1
+          ORDER BY last_update, last_update_server_id, uuid;
+        PRAGMA user_version = 1;
+      )sql", "initialize replay history from existing messages");
+    }
+    else if (schema_version != 1)
+    {
+      throw std::runtime_error{"unsupported storage schema version"};
+    }
     transaction.commit();
   }
 
@@ -517,17 +570,68 @@ namespace cipple::storage
     return read_message(query);
   }
 
-  std::vector<EntityMessage> SqliteStorage::pending_for_node(const std::int32_t node_id) const
+  std::vector<EntityMessage> SqliteStorage::pending_for_node(const std::int32_t node_id, const std::int64_t limit) const
+  {
+    const std::lock_guard lock{_mutex};
+    const auto sql = select_messages(kPendingForNode);
+    const Statement query{_db.get(), sql.c_str()};
+    query.bind(1, node_id);
+    query.bind(2, limit == 0 ? -1 : limit);
+    return read_messages(query);
+  }
+
+  std::vector<Uuid> SqliteStorage::pending_ids_for_node(const std::int32_t node_id, const std::int64_t limit) const
+  {
+    const std::lock_guard lock{_mutex};
+    std::string sql{"SELECT m.uuid FROM message AS m "};
+    sql.append(kPendingForNode);
+    const Statement query{_db.get(), sql.c_str()};
+    query.bind(1, node_id);
+    query.bind(2, limit);
+    std::vector<Uuid> result;
+    while (query.next())
+    {
+      result.push_back(query.uuid(0));
+    }
+    return result;
+  }
+
+  std::vector<JournalEntry> SqliteStorage::journal_after(const std::string_view application_name,
+                                                         const std::string_view key, const std::int64_t after,
+                                                         const std::int64_t limit) const
   {
     const std::lock_guard lock{_mutex};
     const auto sql = select_messages(R"sql(
-      JOIN ack AS a ON a.message_uuid = m.uuid
-      WHERE a.node_id = ?1 AND a.acknowledged = 0 AND m.retained = 1
-      ORDER BY m.last_update, m.last_update_server_id, m.uuid
-    )sql");
+      JOIN delivery_log AS d ON d.message_uuid = m.uuid
+      WHERE d.application_name = ?1 AND d.key = ?2 AND d.sequence > ?3 AND m.retained = 1
+      ORDER BY d.sequence
+      LIMIT ?4
+    )sql", true);
     const Statement query{_db.get(), sql.c_str()};
-    query.bind(1, node_id);
-    return read_messages(query);
+    bind_key(query, application_name, key);
+    query.bind(3, after);
+    query.bind(4, limit);
+    std::vector<JournalEntry> result;
+    while (query.next())
+    {
+      result.push_back({query.integer(10), read_message(query)});
+    }
+    return result;
+  }
+
+  std::int64_t SqliteStorage::journal_sequence(const Uuid& uuid) const
+  {
+    const std::lock_guard lock{_mutex};
+    const Statement query{_db.get(), "SELECT sequence FROM delivery_log WHERE message_uuid = ?1"};
+    query.bind(1, uuid);
+    return query.next() ? query.integer(0) : 0;
+  }
+
+  std::int64_t SqliteStorage::version_watermark() const
+  {
+    const std::lock_guard lock{_mutex};
+    const Statement query{_db.get(), "SELECT COALESCE(MAX(last_update), 0) FROM message"};
+    return query.next() ? query.integer(0) : 0;
   }
 
   std::size_t SqliteStorage::recycle(const std::string_view application_name, const std::string_view key,

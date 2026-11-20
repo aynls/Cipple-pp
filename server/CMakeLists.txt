@@ -1,4 +1,5 @@
 add_library(cipple_server_lib STATIC
+        src/replication.cpp
         src/server.cpp
 )
 

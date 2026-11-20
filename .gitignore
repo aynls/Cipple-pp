@@ -22,6 +22,10 @@ compile_commands.json
 *.pdb
 *.ilk
 
+# Python experiment and demo bytecode
+__pycache__/
+*.pyc
+
 # Operating system files
 .DS_Store
 Thumbs.db

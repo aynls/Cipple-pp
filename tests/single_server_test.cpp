@@ -15,6 +15,7 @@
 #include <vector>
 
 #include "client.hpp"
+#include "hlc/hybrid_clock.hpp"
 #include "server.hpp"
 #include "storage/sqlite_storage.hpp"
 
@@ -214,5 +215,18 @@ namespace
     ASSERT_TRUE(reads(*client, "a-b"));
     ASSERT_EQ(request<bool>([&](auto done) { client->put("app", "key", "new", std::move(done)); }), true);
     EXPECT_TRUE(reads(*client, "new"));
+  }
+
+  TEST(HybridClockTest, CausalWriteFollowsObservedFastClockAcrossReopen)
+  {
+    cipple::hlc::HybridClock fast{60'000};
+    cipple::hlc::HybridClock slow{-60'000};
+    const auto remote = fast.tick();
+    slow.observe(remote);
+    const auto after_sync = slow.tick();
+    ASSERT_GT(after_sync, remote);
+    cipple::hlc::HybridClock restarted{-60'000};
+    restarted.observe(after_sync);
+    EXPECT_GT(restarted.tick(), after_sync);
   }
 }

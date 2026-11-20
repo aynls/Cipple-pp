@@ -1,6 +1,7 @@
 #pragma once
 #include <cstdint>
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "message/message.hpp"
@@ -18,12 +19,14 @@ namespace cipple::message
   {
   public:
     SubscribeRequest(Uuid uuid, std::string application_name, std::string key,
-                     std::string callback_address, std::int32_t callback_port);
+                     std::string callback_address, std::int32_t callback_port,
+                     std::optional<std::int64_t> resume_after = std::nullopt);
 
     const std::string& application_name() const noexcept;
     const std::string& key() const noexcept;
     const std::string& callback_address() const noexcept;
     std::int32_t callback_port() const noexcept;
+    std::optional<std::int64_t> resume_after() const noexcept;
 
     static std::unique_ptr<SubscribeRequest> decode(tcp::BufferReader& reader);
 
@@ -35,5 +38,6 @@ namespace cipple::message
     std::string _key;
     std::string _callback_address;
     std::int32_t _callback_port;
+    std::optional<std::int64_t> _resume_after;
   };
 }

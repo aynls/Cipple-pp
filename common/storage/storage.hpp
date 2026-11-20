@@ -18,6 +18,12 @@ namespace cipple::storage
     std::string key;
   };
 
+  struct JournalEntry
+  {
+    std::int64_t sequence;
+    entity::EntityMessage message;
+  };
+
   enum class AppendResult
   {
     kInserted,
@@ -56,7 +62,15 @@ namespace cipple::storage
     virtual std::optional<entity::EntityMessage> latest(std::string_view application_name,
                                                         std::string_view key) const;
     virtual std::expected<entity::EntityMessage, MessageUnavailable> find_message(const Uuid& uuid) const = 0;
-    virtual std::vector<entity::EntityMessage> pending_for_node(std::int32_t node_id) const = 0;
+    // A zero limit returns the full pending set.
+    virtual std::vector<entity::EntityMessage> pending_for_node(std::int32_t node_id, std::int64_t limit = 0) const = 0;
+    virtual std::vector<Uuid> pending_ids_for_node(std::int32_t node_id, std::int64_t limit) const = 0;
+
+    // Replica-local append order, independent of the version's conflict order.
+    virtual std::vector<JournalEntry> journal_after(std::string_view application_name, std::string_view key,
+                                                   std::int64_t after, std::int64_t limit) const = 0;
+    virtual std::int64_t journal_sequence(const Uuid& uuid) const = 0;
+    virtual std::int64_t version_watermark() const = 0;
 
     // Reclaims payloads and settled acknowledgements while preserving UUIDs for deduplication.
     // keep_latest must be positive. Returns the number of messages reclaimed for this key.

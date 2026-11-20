@@ -4,6 +4,8 @@ add_library(cipple_common STATIC
         entity/atomic_operation.cpp
         entity/entity_message.cpp
         entity/operation_type.cpp
+        entity/resolve.cpp
+        hlc/hybrid_clock.cpp
         message/ack_request.cpp
         message/ack_response.cpp
         message/delete_request.cpp

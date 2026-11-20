@@ -12,6 +12,17 @@ namespace cipple::tcp
                                              const boost::asio::ip::tcp::endpoint endpoint,
                                              ConnectorHandlers handlers, const ConnectorOptions options)
   {
+    return start_any(context, {endpoint}, std::move(handlers), options);
+  }
+
+  std::shared_ptr<Connector> Connector::start_any(boost::asio::io_context& context,
+                                                 std::vector<boost::asio::ip::tcp::endpoint> endpoints,
+                                                 ConnectorHandlers handlers, const ConnectorOptions options)
+  {
+    if (endpoints.empty())
+    {
+      throw std::invalid_argument{"connector: at least one endpoint is required"};
+    }
     options.session_limits.validate();
     if (options.connect_timeout <= std::chrono::steady_clock::duration::zero()
       || options.initial_retry_delay <= std::chrono::steady_clock::duration::zero()
@@ -24,15 +35,15 @@ namespace cipple::tcp
       throw std::invalid_argument{"connector: connected and message handlers are required"};
     }
     auto connector = std::shared_ptr<Connector>{
-      new Connector{context, endpoint, std::move(handlers), options}};
+      new Connector{context, std::move(endpoints), std::move(handlers), options}};
     connector->connect();
     return connector;
   }
 
-  Connector::Connector(boost::asio::io_context& context, const boost::asio::ip::tcp::endpoint endpoint,
+  Connector::Connector(boost::asio::io_context& context, std::vector<boost::asio::ip::tcp::endpoint> endpoints,
                        ConnectorHandlers handlers, const ConnectorOptions options)
     : _context{context}
-      , _endpoint{endpoint}
+      , _endpoints{std::move(endpoints)}
       , _handlers{std::move(handlers)}
       , _options{options}
       , _next_retry_delay{options.initial_retry_delay}
@@ -42,6 +53,11 @@ namespace cipple::tcp
   Connector::~Connector() noexcept
   {
     stop();
+  }
+
+  const boost::asio::ip::tcp::endpoint& Connector::endpoint() const noexcept
+  {
+    return _endpoints[_endpoint_index];
   }
 
   void Connector::stop()
@@ -65,7 +81,7 @@ namespace cipple::tcp
     const auto attempt = ++_attempt;
     const auto weak = weak_from_this();
     _connecting_socket.emplace(_context);
-    _connecting_socket->async_connect(_endpoint, [weak, attempt](const boost::system::error_code error) {
+    _connecting_socket->async_connect(endpoint(), [weak, attempt](const boost::system::error_code error) {
       if (const auto self = weak.lock())
       {
         self->on_connect(attempt, error);
@@ -111,6 +127,7 @@ namespace cipple::tcp
         }
       }, _options.session_limits);
     _state = State::kConnected;
+    _attempts_in_round = 0;
     _next_retry_delay = _options.initial_retry_delay;
     _handlers.on_connected(_session);
   }
@@ -141,8 +158,15 @@ namespace cipple::tcp
   void Connector::wait_to_retry()
   {
     _state = State::kWaitingToRetry;
-    _timer.emplace(_context, _next_retry_delay);
-    _next_retry_delay += std::min(_next_retry_delay, _options.max_retry_delay - _next_retry_delay);
+    _endpoint_index = (_endpoint_index + 1) % _endpoints.size();
+    auto delay = _options.initial_retry_delay;
+    if (++_attempts_in_round == _endpoints.size())
+    {
+      _attempts_in_round = 0;
+      delay = _next_retry_delay;
+      _next_retry_delay += std::min(_next_retry_delay, _options.max_retry_delay - _next_retry_delay);
+    }
+    _timer.emplace(_context, delay);
     _timer->async_wait([weak = weak_from_this(), attempt = _attempt](const boost::system::error_code error) {
       if (const auto self = weak.lock();
           !error && self && self->_state == State::kWaitingToRetry && self->_attempt == attempt)

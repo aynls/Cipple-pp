@@ -23,6 +23,7 @@ namespace cipple::entity
     struct Update
     {
       std::string value;
+      bool operator==(const Update&) const = default;
     };
 
     struct IncrementalUpdate
@@ -30,10 +31,12 @@ namespace cipple::entity
       Uuid base_message_uuid;
       AtomicOperation atomic_operation;
       std::string value;
+      bool operator==(const IncrementalUpdate&) const = default;
     };
 
     struct Delete
     {
+      bool operator==(const Delete&) const = default;
     };
 
     using Payload = std::variant<Update, IncrementalUpdate, Delete>;
@@ -49,6 +52,7 @@ namespace cipple::entity
     std::int32_t last_update_server_id() const noexcept;
     OperationType operation_type() const noexcept;
     const Payload& payload() const noexcept;
+    bool operator==(const EntityMessage&) const = default;
 
     // 线上公共段：uuid + operationType + applicationName + key + 条件段
     //            + lastUpdate + lastUpdateServerId

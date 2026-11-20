@@ -123,6 +123,49 @@ namespace
     EXPECT_TRUE(storage.pending_for_node(8).empty());
   }
 
+  TEST_F(SqliteStorageTest, ReplaysLateOlderVersionsAfterThePersistentCursor)
+  {
+    const auto newer = update(20, "newer");
+    const auto older = update(10, "late");
+    std::int64_t cursor = 0;
+    {
+      SqliteStorage storage{_path};
+      ASSERT_EQ(storage.append(newer, {}), AppendResult::kInserted);
+      cursor = storage.journal_sequence(newer.uuid());
+      ASSERT_GT(cursor, 0);
+      ASSERT_EQ(storage.append(older, {}), AppendResult::kInserted);
+      ASSERT_EQ(storage.append(older, {}), AppendResult::kAlreadyExists);
+    }
+    const SqliteStorage reopened{_path};
+    const auto catch_up = reopened.journal_after("app", "key", cursor, 10);
+    ASSERT_EQ(catch_up.size(), 1);
+    EXPECT_EQ(catch_up.front().message.uuid(), older.uuid());
+    EXPECT_GT(catch_up.front().sequence, cursor);
+    EXPECT_EQ(reopened.latest("app", "key")->uuid(), newer.uuid());
+    EXPECT_EQ(reopened.version_watermark(), newer.last_update());
+  }
+
+  TEST_F(SqliteStorageTest, BackfillsTheReplayJournalForAnM4Database)
+  {
+    const auto full = update(1, "base");
+    const auto delta = increment(full, 2);
+    {
+      SqliteStorage storage{_path};
+      ASSERT_EQ(storage.append(full, {}), AppendResult::kInserted);
+      ASSERT_EQ(storage.append(delta, {}), AppendResult::kInserted);
+    }
+    ASSERT_NO_FATAL_FAILURE(execute_sql("DROP TABLE delivery_log; PRAGMA user_version = 0;"));
+    {
+      const SqliteStorage migrated{_path};
+      const auto entries = migrated.journal_after("app", "key", 0, 10);
+      ASSERT_EQ(entries.size(), 2);
+      EXPECT_EQ(entries[0].message, full);
+      EXPECT_EQ(entries[1].message, delta);
+    }
+    const SqliteStorage reopened{_path};
+    EXPECT_EQ(reopened.journal_after("app", "key", 0, 10).size(), 2);
+  }
+
   TEST_F(SqliteStorageTest, RollsBackItemMessageAndFirstAckWhenLaterAckFails)
   {
     SqliteStorage storage{_path};

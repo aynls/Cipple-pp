@@ -27,7 +27,7 @@ namespace cipple::message
   {
     const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
     const auto result = reader.read_u8();
-    if (result > static_cast<std::uint8_t>(Result::kDuplicated))
+    if (result > static_cast<std::uint8_t>(Result::kRejected))
     {
       throw std::out_of_range{"SyncResponse::decode: unknown result"};
     }
