@@ -482,6 +482,24 @@ namespace cipple::storage
     return read_messages(query);
   }
 
+  std::optional<EntityMessage> SqliteStorage::latest(const std::string_view application_name,
+                                                     const std::string_view key) const
+  {
+    const std::lock_guard lock{_mutex};
+    const auto sql = select_messages(R"sql(
+      WHERE m.application_name = ?1 AND m.key = ?2 AND m.retained = 1
+      ORDER BY m.last_update DESC, m.last_update_server_id DESC, m.uuid DESC
+      LIMIT 1
+    )sql");
+    const Statement query{_db.get(), sql.c_str()};
+    bind_key(query, application_name, key);
+    if (!query.next())
+    {
+      return std::nullopt;
+    }
+    return read_message(query);
+  }
+
   std::expected<EntityMessage, MessageUnavailable> SqliteStorage::find_message(const Uuid& uuid) const
   {
     const std::lock_guard lock{_mutex};

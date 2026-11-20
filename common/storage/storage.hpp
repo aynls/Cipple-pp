@@ -2,6 +2,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <expected>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -51,6 +52,9 @@ namespace cipple::storage
     // Retained messages in ascending order by (last_update, last_update_server_id, uuid).
     virtual std::vector<entity::EntityMessage> history(std::string_view application_name,
                                                        std::string_view key) const = 0;
+    // The last retained version, including a deletion if it is the latest.
+    virtual std::optional<entity::EntityMessage> latest(std::string_view application_name,
+                                                        std::string_view key) const;
     virtual std::expected<entity::EntityMessage, MessageUnavailable> find_message(const Uuid& uuid) const = 0;
     virtual std::vector<entity::EntityMessage> pending_for_node(std::int32_t node_id) const = 0;
 
