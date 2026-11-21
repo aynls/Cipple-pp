@@ -7,6 +7,8 @@
 #include <memory>
 #include <vector>
 
+#include "uuid.hpp"
+
 namespace boost::asio
 {
   class io_context;
@@ -39,9 +41,10 @@ namespace cipple::server
   };
 
   // 出站复制泵：为本节点存储层登记的每条 pending 消息向每个 peer 维护一条
-  // 自动重连的 TCP 会话，按序推送 SyncRequest；只有收到对端持久化后的
-  // SyncResponse（kSuccess/kDuplicated）才把 ack 表标记为已确认，因此
-  // 丢包、崩溃、重连都只会让消息保持 pending 并被重发（at-least-once）。
+  // 自动重连的 TCP 会话，按版本序推送 SyncRequest。只有同一会话里匹配的
+  // SyncResponse（kSuccess/kDuplicated）才离开发送窗口，进入有界的待确认集合；
+  // ack 行提交成功，或读连接已经看见 acknowledged = 1，才释放装载资格。
+  // 丢包、崩溃、重连都只会让尚未确认的消息保持 pending 并被重发（at-least-once）。
   // 所有方法与回调都在 context 的单条 I/O 线程上运行。
   class Replication final : public std::enable_shared_from_this<Replication>
   {
@@ -69,6 +72,12 @@ namespace cipple::server
     void request_pump(Peer& peer) noexcept;
     void pump(Peer& peer) noexcept;
     void stage_pending(Peer& peer);
+    void flush_acks(Peer& peer);
+    void prove_acks(Peer& peer);
+    void on_acks_persisted(Peer& peer, std::vector<Uuid> ids, bool committed);
+    void release_ack(Peer& peer, const Uuid& id) noexcept;
+    static std::size_t fresh_resident(const Peer& peer) noexcept;
+    static std::size_t parked_retries(const Peer& peer) noexcept;
     void drain(Peer& peer);
     void expire_due(Peer& peer);
     void rearm_retry_timer(Peer& peer) noexcept;

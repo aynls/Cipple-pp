@@ -4,9 +4,11 @@
 #include <array>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <stdexcept>
 #include <string>
 #include <utility>
+#include <vector>
 
 #include "storage/sqlite_storage.hpp"
 
@@ -17,6 +19,7 @@ namespace
   using cipple::entity::EntityMessage;
   using cipple::storage::AppendResult;
   using cipple::storage::MessageUnavailable;
+  using cipple::storage::PendingCursor;
   using cipple::storage::SqliteStorage;
 
   EntityMessage update(const std::int64_t version, std::string value)
@@ -408,5 +411,370 @@ namespace
     const auto history = storage.history("app", "key");
     ASSERT_EQ(history.size(), 1);
     EXPECT_EQ(history[0].uuid(), deletion.uuid());
+  }
+
+  int user_version(const std::filesystem::path& path)
+  {
+    const auto utf8 = path.u8string();
+    sqlite3* raw = nullptr;
+    const auto opened = sqlite3_open_v2(reinterpret_cast<const char*>(utf8.c_str()), &raw, SQLITE_OPEN_READONLY, nullptr);
+    const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw, sqlite3_close};
+    EXPECT_EQ(opened, SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    EXPECT_EQ(sqlite3_prepare_v2(db.get(), "PRAGMA user_version", -1, &statement, nullptr), SQLITE_OK);
+    EXPECT_EQ(sqlite3_step(statement), SQLITE_ROW);
+    const auto version = sqlite3_column_int(statement, 0);
+    sqlite3_finalize(statement);
+    return version;
+  }
+
+  std::string schema_catalog(const std::filesystem::path& path)
+  {
+    const auto utf8 = path.u8string();
+    sqlite3* raw = nullptr;
+    const auto opened = sqlite3_open_v2(reinterpret_cast<const char*>(utf8.c_str()), &raw, SQLITE_OPEN_READONLY, nullptr);
+    const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw, sqlite3_close};
+    EXPECT_EQ(opened, SQLITE_OK);
+    sqlite3_stmt* statement = nullptr;
+    EXPECT_EQ(sqlite3_prepare_v2(db.get(),
+                                 "SELECT type, name, COALESCE(sql, '') FROM sqlite_master ORDER BY 1, 2",
+                                 -1, &statement, nullptr), SQLITE_OK);
+    std::string catalog;
+    while (sqlite3_step(statement) == SQLITE_ROW)
+    {
+      catalog.append(reinterpret_cast<const char*>(sqlite3_column_text(statement, 0)));
+      catalog.push_back('|');
+      catalog.append(reinterpret_cast<const char*>(sqlite3_column_text(statement, 1)));
+      catalog.push_back('|');
+      catalog.append(reinterpret_cast<const char*>(sqlite3_column_text(statement, 2)));
+      catalog.push_back('\n');
+    }
+    sqlite3_finalize(statement);
+    return catalog;
+  }
+
+  std::int64_t statement_steps(sqlite3* db, const char* sql, const std::int64_t node_id, const std::int64_t limit,
+                               const bool bounded, const std::int64_t after_version, int* sorts, int* full_scans)
+  {
+    sqlite3_stmt* statement = nullptr;
+    EXPECT_EQ(sqlite3_prepare_v2(db, sql, -1, &statement, nullptr), SQLITE_OK);
+    sqlite3_bind_int64(statement, 1, node_id);
+    if (bounded)
+    {
+      sqlite3_bind_int64(statement, 2, after_version);
+      sqlite3_bind_int64(statement, 3, 1);
+      sqlite3_bind_blob(statement, 4, "", 0, SQLITE_STATIC);
+      // A zero-length blob is not a UUID; tests that need a real cursor use the storage API.
+      sqlite3_bind_int64(statement, 5, limit);
+    }
+    else
+    {
+      sqlite3_bind_int64(statement, 2, limit);
+    }
+    while (sqlite3_step(statement) == SQLITE_ROW)
+    {
+    }
+    *sorts = sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_SORT, 0);
+    *full_scans = sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_FULLSCAN_STEP, 0);
+    const auto steps = sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_VM_STEP, 0);
+    sqlite3_finalize(statement);
+    return steps;
+  }
+
+  TEST_F(SqliteStorageTest, PagesSignedVersionsWithoutASentinelCursor)
+  {
+    SqliteStorage storage{_path};
+    const EntityMessage lowest{ordered_uuid(1), "app", "key", -5, -9, EntityMessage::Update{"low"}};
+    const EntityMessage middle{ordered_uuid(2), "app", "key", -5, 4, EntityMessage::Update{"mid"}};
+    const EntityMessage highest{ordered_uuid(3), "app", "key", 8, -3, EntityMessage::Update{"high"}};
+    const std::array<std::int32_t, 1> targets{7};
+    ASSERT_EQ(storage.append(highest, targets), AppendResult::kInserted);
+    ASSERT_EQ(storage.append(lowest, targets), AppendResult::kInserted);
+    ASSERT_EQ(storage.append(middle, targets), AppendResult::kInserted);
+
+    const auto first = storage.pending_ids_after(7, std::nullopt, 2);
+    ASSERT_EQ(first.size(), 2);
+    EXPECT_EQ(first[0].uuid, lowest.uuid());
+    EXPECT_EQ(first[0].last_update, -5);
+    EXPECT_EQ(first[0].last_update_server_id, -9);
+    EXPECT_EQ(first[1].uuid, middle.uuid());
+
+    const PendingCursor after_lowest{first[0].last_update, first[0].last_update_server_id, first[0].uuid};
+    const auto rest = storage.pending_ids_after(7, after_lowest, 10);
+    ASSERT_EQ(rest.size(), 2);
+    EXPECT_EQ(rest[0].uuid, middle.uuid());
+    EXPECT_EQ(rest[1].uuid, highest.uuid());
+    EXPECT_EQ(rest[1].last_update_server_id, -3);
+
+    const auto loaded = storage.pending_for_node(7);
+    ASSERT_EQ(loaded.size(), 3);
+    EXPECT_EQ(loaded[0].uuid(), lowest.uuid());
+    EXPECT_EQ(loaded[2].uuid(), highest.uuid());
+    EXPECT_TRUE(storage.pending_ids_after(7, PendingCursor{rest.back().last_update, rest.back().last_update_server_id,
+                                                          rest.back().uuid}, 10).empty());
+  }
+
+  TEST_F(SqliteStorageTest, MigratesV0AndV1AckOrderOnce)
+  {
+    const auto path = _path;
+    const auto utf8 = path.u8string();
+    {
+      sqlite3* raw = nullptr;
+      ASSERT_EQ(sqlite3_open(reinterpret_cast<const char*>(utf8.c_str()), &raw), SQLITE_OK);
+      const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw, sqlite3_close};
+      ASSERT_EQ(sqlite3_exec(db.get(), R"sql(
+        CREATE TABLE item (
+          application_name BLOB NOT NULL,
+          key BLOB NOT NULL,
+          PRIMARY KEY (application_name, key)
+        ) WITHOUT ROWID;
+        CREATE TABLE message (
+          uuid BLOB PRIMARY KEY,
+          application_name BLOB NOT NULL,
+          key BLOB NOT NULL,
+          last_update INTEGER NOT NULL,
+          last_update_server_id INTEGER NOT NULL,
+          operation_type TEXT NOT NULL,
+          retained INTEGER NOT NULL DEFAULT 1,
+          value BLOB
+        ) WITHOUT ROWID;
+        CREATE TABLE ack (
+          message_uuid BLOB NOT NULL,
+          node_id INTEGER NOT NULL,
+          acknowledged INTEGER NOT NULL DEFAULT 0,
+          PRIMARY KEY (message_uuid, node_id)
+        ) WITHOUT ROWID;
+        CREATE INDEX ack_pending ON ack(node_id, message_uuid) WHERE acknowledged = 0;
+      )sql", nullptr, nullptr, nullptr), SQLITE_OK);
+      sqlite3_stmt* insert = nullptr;
+      ASSERT_EQ(sqlite3_prepare_v2(db.get(),
+                                   "INSERT INTO message(uuid, application_name, key, last_update, last_update_server_id,"
+                                   " operation_type, value) VALUES (?1, ?2, ?3, ?4, ?5, 'update', ?6)",
+                                   -1, &insert, nullptr), SQLITE_OK);
+      const auto early = ordered_uuid(1);
+      const auto later = ordered_uuid(2);
+      sqlite3_bind_blob(insert, 1, early.bytes().data(), 16, SQLITE_TRANSIENT);
+      sqlite3_bind_blob(insert, 2, "app", 3, SQLITE_TRANSIENT);
+      sqlite3_bind_blob(insert, 3, "key", 3, SQLITE_TRANSIENT);
+      sqlite3_bind_int64(insert, 4, -40);
+      sqlite3_bind_int64(insert, 5, -7);
+      sqlite3_bind_blob(insert, 6, "early", 5, SQLITE_TRANSIENT);
+      ASSERT_EQ(sqlite3_step(insert), SQLITE_DONE);
+      sqlite3_reset(insert);
+      sqlite3_bind_blob(insert, 1, later.bytes().data(), 16, SQLITE_TRANSIENT);
+      sqlite3_bind_int64(insert, 4, 90);
+      sqlite3_bind_int64(insert, 5, 2);
+      sqlite3_bind_blob(insert, 6, "later", 5, SQLITE_TRANSIENT);
+      ASSERT_EQ(sqlite3_step(insert), SQLITE_DONE);
+      sqlite3_finalize(insert);
+      ASSERT_EQ(sqlite3_exec(db.get(),
+                             "INSERT INTO item VALUES (x'617070', x'6b6579');"
+                             "INSERT INTO ack(message_uuid, node_id) SELECT uuid, 4 FROM message;",
+                             nullptr, nullptr, nullptr), SQLITE_OK);
+    }
+
+    {
+      const SqliteStorage migrated{path};
+      EXPECT_EQ(user_version(path), 2);
+      const auto pending = migrated.pending_ids_after(4, std::nullopt, 10);
+      ASSERT_EQ(pending.size(), 2);
+      EXPECT_EQ(pending[0].last_update, -40);
+      EXPECT_EQ(pending[0].last_update_server_id, -7);
+      EXPECT_EQ(pending[1].last_update, 90);
+      const auto catalog = schema_catalog(path);
+      EXPECT_EQ(catalog.find("ack_pending"), std::string::npos);
+      EXPECT_NE(catalog.find("ack_by_version"), std::string::npos);
+      const SqliteStorage again{path};
+      EXPECT_EQ(schema_catalog(path), catalog);
+      EXPECT_EQ(user_version(path), 2);
+    }
+  }
+
+  TEST_F(SqliteStorageTest, MigratesV1WithoutRebuildingTheReplayJournal)
+  {
+    const auto utf8 = _path.u8string();
+    {
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(reinterpret_cast<const char*>(utf8.c_str()), &raw), SQLITE_OK);
+    const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw, sqlite3_close};
+    ASSERT_EQ(sqlite3_exec(db.get(), R"sql(
+      CREATE TABLE message (
+        uuid BLOB PRIMARY KEY,
+        application_name BLOB NOT NULL,
+        key BLOB NOT NULL,
+        last_update INTEGER NOT NULL,
+        last_update_server_id INTEGER NOT NULL,
+        operation_type TEXT NOT NULL,
+        retained INTEGER NOT NULL DEFAULT 1,
+        value BLOB,
+        base_message_uuid BLOB,
+        atomic_operation TEXT
+      ) WITHOUT ROWID;
+      CREATE TABLE ack (
+        message_uuid BLOB NOT NULL,
+        node_id INTEGER NOT NULL,
+        acknowledged INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (message_uuid, node_id)
+      ) WITHOUT ROWID;
+      CREATE INDEX ack_pending ON ack(node_id, message_uuid) WHERE acknowledged = 0;
+      CREATE TABLE delivery_log (
+        sequence INTEGER PRIMARY KEY,
+        message_uuid BLOB NOT NULL UNIQUE,
+        application_name BLOB NOT NULL,
+        key BLOB NOT NULL
+      );
+      PRAGMA user_version = 1;
+    )sql", nullptr, nullptr, nullptr), SQLITE_OK);
+    const auto id = ordered_uuid(4);
+    sqlite3_stmt* insert = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(db.get(),
+                                 "INSERT INTO message(uuid, application_name, key, last_update, last_update_server_id,"
+                                 " operation_type, value) VALUES (?1, ?2, ?3, -3, 1, 'update', ?4)",
+                                 -1, &insert, nullptr), SQLITE_OK);
+    sqlite3_bind_blob(insert, 1, id.bytes().data(), 16, SQLITE_TRANSIENT);
+    sqlite3_bind_blob(insert, 2, "app", 3, SQLITE_TRANSIENT);
+    sqlite3_bind_blob(insert, 3, "key", 3, SQLITE_TRANSIENT);
+    sqlite3_bind_blob(insert, 4, "kept", 4, SQLITE_TRANSIENT);
+    ASSERT_EQ(sqlite3_step(insert), SQLITE_DONE);
+    sqlite3_finalize(insert);
+    ASSERT_EQ(sqlite3_exec(db.get(),
+                           "INSERT INTO ack(message_uuid, node_id) SELECT uuid, 4 FROM message;"
+                           "INSERT INTO delivery_log(message_uuid, application_name, key)"
+                           " SELECT uuid, application_name, key FROM message;",
+                           nullptr, nullptr, nullptr), SQLITE_OK);
+    }
+
+    {
+      const SqliteStorage migrated{_path};
+      EXPECT_EQ(user_version(_path), 2);
+      const auto journal = migrated.journal_after("app", "key", 0, 10);
+      ASSERT_EQ(journal.size(), 1u);
+      EXPECT_EQ(journal.front().message.last_update(), -3);
+      const auto pending = migrated.pending_ids_after(4, std::nullopt, 10);
+      ASSERT_EQ(pending.size(), 1u);
+      EXPECT_EQ(pending.front().last_update, -3);
+    }
+    const auto catalog = schema_catalog(_path);
+    EXPECT_EQ(catalog.find("ack_pending"), std::string::npos);
+    EXPECT_NE(catalog.find("ack_by_version"), std::string::npos);
+    const SqliteStorage reopened{_path};
+    EXPECT_EQ(schema_catalog(_path), catalog);
+    EXPECT_EQ(reopened.journal_after("app", "key", 0, 10).size(), 1u);
+  }
+
+  TEST_F(SqliteStorageTest, AckBatchIsAtomicAndVisibleOnlyAfterCommit)
+  {
+    SqliteStorage storage{_path};
+    const auto first = update(1, "one");
+    const auto second = update(2, "two");
+    const auto third = update(3, "three");
+    const std::array<std::int32_t, 1> targets{7};
+    ASSERT_EQ(storage.append(first, targets), AppendResult::kInserted);
+    ASSERT_EQ(storage.append(second, targets), AppendResult::kInserted);
+    ASSERT_EQ(storage.append(third, targets), AppendResult::kInserted);
+    EXPECT_TRUE(storage.acknowledged_among(7, std::array{first.uuid(), second.uuid()}).empty());
+
+    ASSERT_NO_FATAL_FAILURE(execute_sql(R"sql(
+      CREATE TRIGGER reject_batch_tail BEFORE UPDATE ON ack
+      WHEN NEW.node_id = 7 AND NEW.acknowledged = 1
+       AND (SELECT count(*) FROM ack WHERE node_id = 7 AND acknowledged = 1) >= 1
+      BEGIN
+        SELECT RAISE(ABORT, 'stop batch');
+      END;
+    )sql"));
+    EXPECT_THROW(storage.mark_acked_batch(7, std::array{first.uuid(), second.uuid()}), std::runtime_error);
+    EXPECT_EQ(storage.pending_ids_after(7, std::nullopt, 10).size(), 3u);
+    EXPECT_TRUE(storage.acknowledged_among(7, std::array{first.uuid(), second.uuid(), third.uuid()}).empty());
+    ASSERT_NO_FATAL_FAILURE(execute_sql("DROP TRIGGER reject_batch_tail"));
+
+    ASSERT_TRUE(storage.mark_acked(third.uuid(), 7));
+    EXPECT_EQ(storage.mark_acked_batch(7, std::array{first.uuid(), second.uuid(), third.uuid()}), 2u);
+    EXPECT_EQ(storage.mark_acked_batch(7, std::array{first.uuid(), second.uuid()}), 0u);
+    const auto durable = storage.acknowledged_among(7, std::array{third.uuid(), first.uuid(), second.uuid()});
+    ASSERT_EQ(durable.size(), 3u);
+    EXPECT_TRUE(storage.pending_for_node(7).empty());
+    EXPECT_EQ(storage.mark_acked_batch(7, std::span<const Uuid>{}), 0u);
+  }
+
+  TEST_F(SqliteStorageTest, PendingPageDoesNotSortTheWholeBacklog)
+  {
+    constexpr int kRows = 4000;
+    {
+      SqliteStorage storage{_path};
+    }
+    const auto utf8 = _path.u8string();
+    sqlite3* raw = nullptr;
+    ASSERT_EQ(sqlite3_open(reinterpret_cast<const char*>(utf8.c_str()), &raw), SQLITE_OK);
+    const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw, sqlite3_close};
+    ASSERT_EQ(sqlite3_exec(db.get(), "BEGIN", nullptr, nullptr, nullptr), SQLITE_OK);
+    sqlite3_stmt* message = nullptr;
+    sqlite3_stmt* ack = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(db.get(),
+                                 "INSERT INTO message(uuid, application_name, key, last_update, last_update_server_id,"
+                                 " operation_type, retained, value) VALUES (?1, ?3, ?4, ?2, 1, 'update', 1, ?5)",
+                                 -1, &message, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_prepare_v2(db.get(),
+                                 "INSERT INTO ack(message_uuid, node_id, last_update, last_update_server_id)"
+                                 " VALUES (?1, 7, ?2, 1)",
+                                 -1, &ack, nullptr), SQLITE_OK);
+    for (int row = 0; row < kRows; ++row)
+    {
+      std::array<unsigned char, 16> id{};
+      id[14] = static_cast<unsigned char>((row >> 8) & 0xff);
+      id[15] = static_cast<unsigned char>(row & 0xff);
+      const auto version = static_cast<sqlite3_int64>(row) - 20;
+      sqlite3_bind_blob(message, 1, id.data(), 16, SQLITE_TRANSIENT);
+      sqlite3_bind_int64(message, 2, version);
+      sqlite3_bind_blob(message, 3, "app", 3, SQLITE_TRANSIENT);
+      sqlite3_bind_blob(message, 4, "key", 3, SQLITE_TRANSIENT);
+      sqlite3_bind_blob(message, 5, "v", 1, SQLITE_TRANSIENT);
+      ASSERT_EQ(sqlite3_step(message), SQLITE_DONE) << sqlite3_errmsg(db.get());
+      sqlite3_reset(message);
+      sqlite3_bind_blob(ack, 1, id.data(), 16, SQLITE_TRANSIENT);
+      sqlite3_bind_int64(ack, 2, version);
+      ASSERT_EQ(sqlite3_step(ack), SQLITE_DONE);
+      sqlite3_reset(ack);
+    }
+    sqlite3_finalize(message);
+    sqlite3_finalize(ack);
+    ASSERT_EQ(sqlite3_exec(db.get(), "COMMIT", nullptr, nullptr, nullptr), SQLITE_OK);
+
+    sqlite3_stmt* plan = nullptr;
+    ASSERT_EQ(sqlite3_prepare_v2(db.get(),
+                                 "EXPLAIN QUERY PLAN "
+                                 "SELECT message_uuid FROM ack WHERE node_id = ?1 AND acknowledged = 0 "
+                                 "ORDER BY last_update, last_update_server_id, message_uuid LIMIT ?2",
+                                 -1, &plan, nullptr), SQLITE_OK);
+    sqlite3_bind_int(plan, 1, 7);
+    sqlite3_bind_int(plan, 2, 256);
+    std::string planned;
+    while (sqlite3_step(plan) == SQLITE_ROW)
+    {
+      planned.append(reinterpret_cast<const char*>(sqlite3_column_text(plan, 3)));
+      planned.push_back('\n');
+    }
+    sqlite3_finalize(plan);
+    EXPECT_NE(planned.find("ack_by_version"), std::string::npos) << planned;
+    EXPECT_EQ(planned.find("TEMP B-TREE"), std::string::npos) << planned;
+
+    int sorts = 0;
+    int full_scans = 0;
+    const auto steps = statement_steps(db.get(),
+                                       "SELECT message_uuid, last_update, last_update_server_id FROM ack "
+                                       "WHERE node_id = ?1 AND acknowledged = 0 "
+                                       "ORDER BY last_update, last_update_server_id, message_uuid LIMIT ?2",
+                                       7, 256, false, 0, &sorts, &full_scans);
+    EXPECT_EQ(sorts, 0);
+    EXPECT_EQ(full_scans, 0);
+    EXPECT_LT(steps, kRows) << "page scan walked the whole backlog";
+
+    SqliteStorage storage{_path};
+    const auto page = storage.pending_ids_after(7, std::nullopt, 256);
+    ASSERT_EQ(page.size(), 256u);
+    EXPECT_EQ(page.front().last_update, -20);
+    const auto next = storage.pending_ids_after(7, PendingCursor{page.back().last_update, page.back().last_update_server_id,
+                                                                 page.back().uuid}, 1);
+    ASSERT_EQ(next.size(), 1u);
+    EXPECT_EQ(next.front().last_update, page.back().last_update + 1);
   }
 }

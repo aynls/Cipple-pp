@@ -37,6 +37,22 @@ namespace cipple::storage
     kRecycled,
   };
 
+  // Exclusive lower bound for a pending scan. Callers pass an empty optional for the
+  // first page so versions with a negative HLC or node id stay reachable.
+  struct PendingCursor
+  {
+    std::int64_t last_update = 0;
+    std::int32_t last_update_server_id = 0;
+    Uuid uuid{};
+  };
+
+  struct PendingId
+  {
+    Uuid uuid{};
+    std::int64_t last_update = 0;
+    std::int32_t last_update_server_id = 0;
+  };
+
   class Storage
   {
   public:
@@ -65,6 +81,14 @@ namespace cipple::storage
     // A zero limit returns the full pending set.
     virtual std::vector<entity::EntityMessage> pending_for_node(std::int32_t node_id, std::int64_t limit = 0) const = 0;
     virtual std::vector<Uuid> pending_ids_for_node(std::int32_t node_id, std::int64_t limit) const = 0;
+    // Page of unacknowledged targets in version order, strictly after `after`.
+    // An empty cursor has no lower bound. A non-positive limit returns nothing.
+    virtual std::vector<PendingId> pending_ids_after(std::int32_t node_id, const std::optional<PendingCursor>& after,
+                                                    std::int64_t limit) const = 0;
+    // One synchronous=FULL transaction. Already-acknowledged ids stay acknowledged and are not counted.
+    virtual std::size_t mark_acked_batch(std::int32_t node_id, std::span<const Uuid> message_uuids) = 0;
+    // Subset of ids whose ack row is already committed as acknowledged.
+    virtual std::vector<Uuid> acknowledged_among(std::int32_t node_id, std::span<const Uuid> message_uuids) const = 0;
 
     // Replica-local append order, independent of the version's conflict order.
     virtual std::vector<JournalEntry> journal_after(std::string_view application_name, std::string_view key,
