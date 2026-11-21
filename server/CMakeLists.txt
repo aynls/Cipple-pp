@@ -1,6 +1,7 @@
 add_library(cipple_server_lib STATIC
         src/replication.cpp
         src/server.cpp
+        src/subscriptions.cpp
 )
 
 target_include_directories(cipple_server_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)

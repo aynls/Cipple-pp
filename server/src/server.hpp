@@ -2,19 +2,11 @@
 #include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/steady_timer.hpp>
 
-#include <chrono>
 #include <cstdint>
-#include <map>
 #include <memory>
-#include <optional>
-#include <string>
-#include <unordered_map>
-#include <utility>
 #include <vector>
 
 #include "entity/entity_message.hpp"
-#include "hlc/hybrid_clock.hpp"
-#include "message/result.hpp"
 #include "replication.hpp"
 
 namespace boost::asio
@@ -29,6 +21,11 @@ namespace cipple::message
   class SyncRequest;
 }
 
+namespace cipple::hlc
+{
+  class HybridClock;
+}
+
 namespace cipple::storage
 {
   class StorageWriter;
@@ -41,6 +38,8 @@ namespace cipple::tcp
 
 namespace cipple::server
 {
+  class Subscriptions;
+
   struct ServerOptions
   {
     std::int32_t node_id = 0;
@@ -68,43 +67,8 @@ namespace cipple::server
     void stop() noexcept;
 
   private:
-    using ConfigKey = std::pair<std::string, std::string>;
-
-    struct PendingDelivery
-    {
-      Uuid reply_id;
-      std::int64_t sequence;
-      std::chrono::steady_clock::time_point deadline;
-    };
-
-    // Filled on the writer thread, consumed on the I/O thread.
-    struct WriteOutcome
-    {
-      bool success = false;
-      bool inserted = false;
-      std::optional<std::string> error;
-    };
-
-    struct SyncOutcome
-    {
-      message::Result result = message::Result::kRejected;
-      bool new_base = false;
-      bool is_current = false;
-      std::optional<std::string> error;
-    };
-
-    struct Subscription
-    {
-      std::optional<std::int64_t> cursor;
-      std::optional<PendingDelivery> pending;
-      bool needs_replay = false;
-    };
-
-    struct Connection
-    {
-      std::shared_ptr<tcp::Session> session;
-      std::map<ConfigKey, Subscription> subscriptions;
-    };
+    struct WriteOutcome;
+    struct SyncOutcome;
 
     Server(boost::asio::io_context& context, const boost::asio::ip::tcp::endpoint& endpoint,
            std::unique_ptr<storage::StorageWriter> storage, const ServerOptions& options);
@@ -114,32 +78,29 @@ namespace cipple::server
     void on_message(std::uint64_t connection_id, tcp::Session& session, const message::Message& message);
     void read(tcp::Session& session, const message::GetRequest& request) const;
     void sync(tcp::Session& session, const message::SyncRequest& request);
-    std::optional<entity::EntityMessage> find_base(const entity::EntityMessage& message) const;
 
     template<typename Response, typename Request>
     void write(tcp::Session& session, const Request& request, entity::EntityMessage::Payload payload);
     template<typename Response>
-    void finish_write(tcp::Session& session, const Uuid& request_id, const entity::EntityMessage& version,
-                      const WriteOutcome& outcome);
-    void finish_sync(tcp::Session& session, const Uuid& request_id, const entity::EntityMessage& version,
-                     const std::optional<entity::EntityMessage>& supplied, bool notify,
-                     const SyncOutcome& outcome);
+    void finish_write(tcp::Session& session, const Uuid& request_id, WriteOutcome& outcome);
+    void finish_sync(tcp::Session& session, const Uuid& request_id, bool notify, SyncOutcome& outcome);
 
-    void publish(const entity::EntityMessage& version, bool is_current);
-    void replay(tcp::Session& session, const ConfigKey& key, Subscription& subscription);
+    void schedule_replay() noexcept;
     void check_delivery_deadlines();
 
     boost::asio::io_context& _context;
     std::unique_ptr<storage::StorageWriter> _storage;
+    std::unique_ptr<Subscriptions> _subscriptions;
     boost::asio::ip::tcp::acceptor _acceptor;
     boost::asio::steady_timer _delivery_timer;
     boost::asio::ip::tcp::endpoint _local_endpoint;
     std::int32_t _node_id;
     std::vector<std::int32_t> _peer_ids;
     bool _relay_peer_updates;
-    hlc::HybridClock _clock;
+    // Seeded before accepting requests, then only accessed by writer tasks.
+    std::shared_ptr<hlc::HybridClock> _clock;
     std::shared_ptr<Replication> _replication;
     std::uint64_t _next_connection_id = 0;
-    std::unordered_map<std::uint64_t, Connection> _connections;
+    bool _replay_scheduled = false;
   };
 }

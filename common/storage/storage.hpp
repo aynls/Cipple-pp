@@ -31,6 +31,13 @@ namespace cipple::storage
     kBaseUnavailable,
   };
 
+  struct AppendOutcome
+  {
+    AppendResult result;
+    // Evaluated inside the append transaction against GET's version order.
+    bool is_current = false;
+  };
+
   enum class MessageUnavailable
   {
     kMissing,
@@ -48,6 +55,11 @@ namespace cipple::storage
     virtual AppendResult append(const entity::EntityMessage& message,
                                 std::span<const std::int32_t> target_node_ids,
                                 const entity::EntityMessage* supplied_base = nullptr) = 0;
+
+    // Returns the committed result. is_current is meaningful for kInserted.
+    virtual AppendOutcome append_with_outcome(const entity::EntityMessage& message,
+                                              std::span<const std::int32_t> target_node_ids,
+                                              const entity::EntityMessage* supplied_base = nullptr) = 0;
 
     // Returns true only when a registered target transitions to acknowledged.
     virtual bool mark_acked(const Uuid& message_uuid, std::int32_t node_id) = 0;

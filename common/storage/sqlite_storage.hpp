@@ -19,6 +19,9 @@ namespace cipple::storage
     AppendResult append(const entity::EntityMessage& message,
                         std::span<const std::int32_t> target_node_ids,
                         const entity::EntityMessage* supplied_base = nullptr) override;
+    AppendOutcome append_with_outcome(const entity::EntityMessage& message,
+                                      std::span<const std::int32_t> target_node_ids,
+                                      const entity::EntityMessage* supplied_base = nullptr) override;
     bool mark_acked(const Uuid& message_uuid, std::int32_t node_id) override;
     std::vector<ItemKey> list_keys() const override;
     std::vector<entity::EntityMessage> history(std::string_view application_name,
@@ -36,6 +39,10 @@ namespace cipple::storage
                         std::size_t keep_latest) override;
 
   private:
+    AppendOutcome append_impl(const entity::EntityMessage& message,
+                              std::span<const std::int32_t> target_node_ids,
+                              const entity::EntityMessage* supplied_base, bool check_current);
+
     struct CloseDatabase
     {
       void operator()(sqlite3* db) const noexcept;

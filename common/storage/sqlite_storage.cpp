@@ -462,22 +462,36 @@ namespace cipple::storage
   }
 
   AppendResult SqliteStorage::append(const EntityMessage& message,
-                                     const std::span<const std::int32_t> target_node_ids,
-                                     const EntityMessage* supplied_base)
+                                    const std::span<const std::int32_t> target_node_ids,
+                                    const EntityMessage* supplied_base)
+  {
+    return append_impl(message, target_node_ids, supplied_base, false).result;
+  }
+
+  AppendOutcome SqliteStorage::append_with_outcome(const EntityMessage& message,
+                                                  const std::span<const std::int32_t> target_node_ids,
+                                                  const EntityMessage* supplied_base)
+  {
+    return append_impl(message, target_node_ids, supplied_base, true);
+  }
+
+  AppendOutcome SqliteStorage::append_impl(const EntityMessage& message,
+                                          const std::span<const std::int32_t> target_node_ids,
+                                          const EntityMessage* supplied_base, const bool check_current)
   {
     const std::lock_guard lock{_mutex};
     auto* db = _db.get();
     const Transaction transaction{db};
     if (message_exists(db, message.uuid()))
     {
-      return AppendResult::kAlreadyExists;
+      return {AppendResult::kAlreadyExists};
     }
 
     insert_item(db, message);
     const auto* delta = std::get_if<EntityMessage::IncrementalUpdate>(&message.payload());
     if (delta && !ensure_base(db, message, delta->base_message_uuid, supplied_base))
     {
-      return AppendResult::kBaseUnavailable;
+      return {AppendResult::kBaseUnavailable};
     }
     insert_message(db, message);
     if (!target_node_ids.empty())
@@ -494,8 +508,20 @@ namespace cipple::storage
         insert_ack.reset();
       }
     }
+    AppendOutcome outcome{AppendResult::kInserted};
+    if (check_current)
+    {
+      const Statement latest{db, R"sql(
+        SELECT uuid FROM message
+        WHERE application_name = ?1 AND key = ?2 AND retained = 1
+        ORDER BY last_update DESC, last_update_server_id DESC, uuid DESC
+        LIMIT 1
+      )sql"};
+      bind_key(latest, message.application_name(), message.key());
+      outcome.is_current = latest.next() && latest.uuid(0) == message.uuid();
+    }
     transaction.commit();
-    return AppendResult::kInserted;
+    return outcome;
   }
 
   bool SqliteStorage::mark_acked(const Uuid& message_uuid, const std::int32_t node_id)
