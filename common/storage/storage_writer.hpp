@@ -1,10 +1,7 @@
 #pragma once
-#include <condition_variable>
 #include <cstddef>
-#include <deque>
 #include <functional>
 #include <memory>
-#include <mutex>
 #include <thread>
 
 namespace boost::asio

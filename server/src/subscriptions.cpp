@@ -180,6 +180,10 @@ namespace cipple::server
         encoded = true;
         try
         {
+          if (!base)
+          {
+            base = delivery_base(version);
+          }
           frame = tcp::encode_frame_shared(message::DispatchRequest{
             Uuid::generate(), "", std::move(version), 0, std::move(base),
           });
@@ -243,6 +247,22 @@ namespace cipple::server
     return !_ready.empty();
   }
 
+  std::optional<EntityMessage> Subscriptions::delivery_base(const EntityMessage& version) const
+  {
+    const auto* delta = std::get_if<EntityMessage::IncrementalUpdate>(&version.payload());
+    if (!delta)
+    {
+      return std::nullopt;
+    }
+    auto base = _reader.find_message(delta->base_message_uuid);
+    if (!base || !std::holds_alternative<EntityMessage::Update>(base->payload())
+        || base->application_name() != version.application_name() || base->key() != version.key())
+    {
+      throw std::runtime_error{"stored incremental update has no full base"};
+    }
+    return std::move(*base);
+  }
+
   void Subscriptions::replay_ready() noexcept
   {
     while (!_ready.empty())
@@ -267,17 +287,7 @@ namespace cipple::server
         return;
       }
       auto& [sequence, version] = entries.front();
-      std::optional<EntityMessage> base;
-      if (const auto* delta = std::get_if<EntityMessage::IncrementalUpdate>(&version.payload()))
-      {
-        auto stored = _reader.find_message(delta->base_message_uuid);
-        if (!stored || !std::holds_alternative<EntityMessage::Update>(stored->payload())
-            || stored->application_name() != key.first || stored->key() != key.second)
-        {
-          throw std::runtime_error{"stored incremental update has no full base"};
-        }
-        base.emplace(std::move(*stored));
-      }
+      auto base = delivery_base(version);
       const auto reply_id = Uuid::generate();
       const auto frame = tcp::encode_frame_shared(message::DispatchRequest{
         reply_id, "", std::move(version), sequence, std::move(base),

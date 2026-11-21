@@ -82,8 +82,8 @@ namespace cipple::server
     template<typename Response, typename Request>
     void write(tcp::Session& session, const Request& request, entity::EntityMessage::Payload payload);
     template<typename Response>
-    void finish_write(tcp::Session& session, const Uuid& request_id, WriteOutcome& outcome);
-    void finish_sync(tcp::Session& session, const Uuid& request_id, bool notify, SyncOutcome& outcome);
+    void finish_write(tcp::Session* session, const Uuid& request_id, WriteOutcome& outcome);
+    void finish_sync(tcp::Session* session, const Uuid& request_id, bool notify, SyncOutcome& outcome);
 
     void schedule_replay() noexcept;
     void check_delivery_deadlines();

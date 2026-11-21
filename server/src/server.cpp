@@ -122,7 +122,6 @@ namespace cipple::server
   {
     ConfigKey key;
     std::optional<EntityMessage> version;
-    std::optional<EntityMessage> base;
     bool success = false;
     bool is_current = false;
     std::optional<std::string> error;
@@ -265,6 +264,15 @@ namespace cipple::server
     const auto outcome = std::make_shared<WriteOutcome>(WriteOutcome{
       .key = {request.application_name(), request.key()},
     });
+    const auto value_bytes = std::visit([](const auto& operation) -> std::size_t {
+      if constexpr (requires { operation.value; })
+      {
+        return operation.value.size();
+      }
+      return 0;
+    }, payload);
+    const auto charge = sizeof(WriteOutcome) + 2 * (outcome->key.first.size() + outcome->key.second.size())
+                       + value_bytes + _peer_ids.size() * sizeof(std::int32_t);
     const bool accepted = _storage->submit(_context,
       [clock = _clock, node_id = _node_id, peers = _peer_ids, request_id,
        payload = std::move(payload), outcome](storage::Storage& store) mutable {
@@ -284,8 +292,7 @@ namespace cipple::server
           }
           auto& version = outcome->version.emplace(request_id, outcome->key.first, outcome->key.second,
                                                    clock->tick(), node_id, std::move(payload));
-          outcome->base = lookup_base(store, version);
-          if (fits_read_response(version, outcome->base))
+          if (fits_read_response(version, lookup_base(store, version)))
           {
             const auto receipt = store.append_with_outcome(version, peers);
             outcome->success = receipt.result == storage::AppendResult::kInserted;
@@ -297,12 +304,13 @@ namespace cipple::server
           outcome->error = error.what();
         }
       },
-      [weak = weak_from_this(), session = session.shared_from_this(), request_id, outcome] {
+      [weak = weak_from_this(), session = session.weak_from_this(), request_id, outcome] {
         if (const auto self = weak.lock(); self && self->_acceptor.is_open())
         {
-          self->finish_write<Response>(*session, request_id, *outcome);
+          const auto recipient = session.lock();
+          self->finish_write<Response>(recipient.get(), request_id, *outcome);
         }
-      });
+      }, charge);
     if (!accepted)
     {
       send(session, Response{request_id, false});
@@ -310,13 +318,16 @@ namespace cipple::server
   }
 
   template<typename Response>
-  void Server::finish_write(tcp::Session& session, const Uuid& request_id, WriteOutcome& outcome)
+  void Server::finish_write(tcp::Session* session, const Uuid& request_id, WriteOutcome& outcome)
   {
     if (outcome.error)
     {
       std::cerr << "Write failed: " << *outcome.error << '\n';
     }
-    send(session, Response{request_id, outcome.success});
+    if (session && session->is_open())
+    {
+      send(*session, Response{request_id, outcome.success});
+    }
     if (!outcome.success)
     {
       return;
@@ -329,7 +340,7 @@ namespace cipple::server
       }
       if (outcome.is_current)
       {
-        _subscriptions->publish_live(outcome.key, std::move(*outcome.version), std::move(outcome.base));
+        _subscriptions->publish_live(outcome.key, std::move(*outcome.version), std::nullopt);
       }
     }
     _subscriptions->wake(outcome.key);
@@ -396,6 +407,9 @@ namespace cipple::server
       .version = version,
       .base = request.base(),
     });
+    const auto charge = sizeof(SyncOutcome) + entity_size(version)
+                      + outcome->key.first.size() + outcome->key.second.size()
+                      + (outcome->base ? entity_size(*outcome->base) : 0) + targets.capacity() * sizeof(std::int32_t);
     const bool notify = !targets.empty();
     const bool accepted = _storage->submit(_context,
       [clock = _clock, targets = std::move(targets), outcome](storage::Storage& store) {
@@ -416,12 +430,9 @@ namespace cipple::server
             return;
           }
 
-          if (!supplied)
-          {
-            outcome->base = lookup_base(store, version);
-          }
+          const auto stored_base = supplied ? std::optional<EntityMessage>{} : lookup_base(store, version);
           if ((supplied && version.operation_type() != entity::OperationType::kIncrementalUpdate)
-              || !fits_read_response(version, outcome->base))
+              || !fits_read_response(version, supplied ? outcome->base : stored_base))
           {
             return;
           }
@@ -441,25 +452,29 @@ namespace cipple::server
           outcome->error = error.what();
         }
       },
-      [weak = weak_from_this(), session = session.shared_from_this(), request_id = request.uuid(), notify, outcome] {
+      [weak = weak_from_this(), session = session.weak_from_this(), request_id = request.uuid(), notify, outcome] {
         if (const auto self = weak.lock(); self && self->_acceptor.is_open())
         {
-          self->finish_sync(*session, request_id, notify, *outcome);
+          const auto recipient = session.lock();
+          self->finish_sync(recipient.get(), request_id, notify, *outcome);
         }
-      });
+      }, charge);
     if (!accepted)
     {
       send(session, message::SyncResponse{request.uuid(), Result::kRejected});
     }
   }
 
-  void Server::finish_sync(tcp::Session& session, const Uuid& request_id, const bool notify, SyncOutcome& outcome)
+  void Server::finish_sync(tcp::Session* session, const Uuid& request_id, const bool notify, SyncOutcome& outcome)
   {
     if (outcome.error)
     {
       std::cerr << "Sync failed: " << *outcome.error << '\n';
     }
-    send(session, message::SyncResponse{request_id, outcome.result});
+    if (session && session->is_open())
+    {
+      send(*session, message::SyncResponse{request_id, outcome.result});
+    }
     if (outcome.result == message::Result::kRejected)
     {
       return;

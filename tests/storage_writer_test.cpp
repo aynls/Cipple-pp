@@ -42,6 +42,11 @@ namespace
     {
       return AppendResult::kInserted;
     }
+    cipple::storage::AppendOutcome append_with_outcome(const EntityMessage&, std::span<const std::int32_t>,
+                                                     const EntityMessage*) override
+    {
+      return {AppendResult::kInserted, true};
+    }
     bool mark_acked(const Uuid&, std::int32_t) override
     {
       return true;

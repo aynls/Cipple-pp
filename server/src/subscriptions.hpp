@@ -75,6 +75,7 @@ namespace cipple::server
     void remove_route(ConnectionId id, const ConfigKey& key, const Subscription& subscription) noexcept;
     void enqueue_replay(ConnectionId id, const ConfigKey& key, std::int64_t cursor);
     void cancel_replay(ConnectionId id, const ConfigKey& key, std::int64_t cursor) noexcept;
+    std::optional<entity::EntityMessage> delivery_base(const entity::EntityMessage& version) const;
     void replay_group(const ConfigKey& key, std::int64_t cursor, const Recipients& recipients) noexcept;
 
     storage::Storage& _reader;

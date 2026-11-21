@@ -185,7 +185,7 @@ namespace
   {
   protected:
     void start_server(const ServerOptions& options = {}, std::unique_ptr<storage::Storage> writer = {},
-                      std::unique_ptr<storage::Storage> reader = {})
+                      std::unique_ptr<storage::Storage> reader = {}, storage::StorageWriter::Limits limits = {})
     {
       if (!writer)
       {
@@ -196,7 +196,7 @@ namespace
         reader = std::make_unique<SqliteStorage>(_db);
       }
       _server = Server::start(_io, {asio::ip::address_v4::loopback(), 0},
-        std::make_unique<storage::StorageWriter>(std::move(writer), std::move(reader)), options);
+        std::make_unique<storage::StorageWriter>(std::move(writer), std::move(reader), limits), options);
     }
 
     WireClient connect_wire()
@@ -502,6 +502,33 @@ namespace
     const auto& versions = peer.reply<message::GetResponse>(get_id)->items();
     ASSERT_EQ(versions.size(), 1);
     EXPECT_EQ(versions.back().uuid(), live->entity().uuid());
+  }
+
+  TEST_F(SingleServerTest, RejectsWritesAndSyncsOverTheStorageByteBudget)
+  {
+    asio::ip::tcp::acceptor offline_peer{_io, {asio::ip::address_v4::loopback(), 0}};
+    start_server({.node_id = 1, .peers = {{2, offline_peer.local_endpoint()}}}, {}, {}, {.max_request_bytes = 512});
+    const auto client = connect_wire();
+    const auto put_id = Uuid::generate();
+    const auto sync_id = Uuid::generate();
+    const std::string large(2048, 'v');
+    const EntityMessage version{Uuid::generate(), "app", "key", 100, 2, EntityMessage::Update{large}};
+    ASSERT_TRUE(client.send(message::PutRequest{put_id, "app", "key", large}));
+    ASSERT_TRUE(client.send(message::SyncRequest{sync_id, version, 2}));
+    ASSERT_TRUE(run_until([&] {
+      return client.reply<message::PutResponse>(put_id) && client.reply<message::SyncResponse>(sync_id);
+    }));
+    EXPECT_FALSE(client.reply<message::PutResponse>(put_id)->success());
+    EXPECT_EQ(client.reply<message::SyncResponse>(sync_id)->result(), message::Result::kRejected);
+    const SqliteStorage disk{_db};
+    EXPECT_FALSE(disk.find_message(put_id));
+    EXPECT_FALSE(disk.find_message(version.uuid()));
+
+    const auto small_id = Uuid::generate();
+    ASSERT_TRUE(client.send(message::PutRequest{small_id, "app", "key", "small"}));
+    ASSERT_TRUE(run_until([&] { return client.reply<message::PutResponse>(small_id); }));
+    EXPECT_TRUE(client.reply<message::PutResponse>(small_id)->success());
+    EXPECT_TRUE(disk.find_message(small_id));
   }
 
   TEST_F(SingleServerTest, WritesReadsAndPushesCommittedChanges)
