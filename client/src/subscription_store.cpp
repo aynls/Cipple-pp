@@ -44,7 +44,7 @@ namespace cipple::client
       // Recycles the statement after a finished, partial, or failed run.
       // sqlite3_reset returns the previous step's error code; reuse does not
       // depend on it, so both calls are intentionally unchecked.
-      void restart() noexcept
+      void reset() noexcept
       {
         sqlite3_reset(_statement.get());
         sqlite3_clear_bindings(_statement.get());
@@ -108,6 +108,25 @@ namespace cipple::client
       std::unique_ptr<sqlite3_stmt, decltype(&sqlite3_finalize)> _statement;
     };
 
+    class ResetStatement final
+    {
+    public:
+      explicit ResetStatement(Statement& statement) noexcept : _statement{statement}
+      {
+      }
+
+      ~ResetStatement() noexcept
+      {
+        _statement.reset();
+      }
+
+      ResetStatement(const ResetStatement&) = delete;
+      ResetStatement& operator=(const ResetStatement&) = delete;
+
+    private:
+      Statement& _statement;
+    };
+
     std::optional<std::string> find_base(Statement& lookup, const EntityMessage& version)
     {
       const auto* increment = std::get_if<EntityMessage::IncrementalUpdate>(&version.payload());
@@ -115,7 +134,7 @@ namespace cipple::client
       {
         return std::nullopt;
       }
-      lookup.restart();
+      const ResetStatement reset{lookup};
       lookup.bind_blob(1, increment->base_message_uuid.bytes());
       lookup.bind_blob(2, version.application_name());
       lookup.bind_blob(3, version.key());
@@ -128,7 +147,7 @@ namespace cipple::client
 
     bool already_stored(Statement& lookup, const message::DispatchRequest& dispatch, const std::string_view encoded)
     {
-      lookup.restart();
+      const ResetStatement reset{lookup};
       lookup.bind_blob(1, dispatch.entity().uuid().bytes());
       if (!lookup.step())
       {
@@ -153,7 +172,7 @@ namespace cipple::client
                      const std::string_view encoded, const std::optional<std::string>& value)
     {
       const auto& version = dispatch.entity();
-      insert.restart();
+      const ResetStatement reset{insert};
       insert.bind_blob(1, version.uuid().bytes());
       insert.bind_blob(2, version.application_name());
       insert.bind_blob(3, version.key());
@@ -176,7 +195,7 @@ namespace cipple::client
 
     bool is_current(Statement& latest, const EntityMessage& version)
     {
-      latest.restart();
+      const ResetStatement reset{latest};
       latest.bind_blob(1, version.application_name());
       latest.bind_blob(2, version.key());
       const auto& uuid = version.uuid().bytes();
@@ -187,7 +206,7 @@ namespace cipple::client
     void advance_cursor(Statement& advance, const std::string_view endpoint, const EntityMessage& version,
                         const std::int64_t sequence)
     {
-      advance.restart();
+      const ResetStatement reset{advance};
       advance.bind_text(1, endpoint);
       advance.bind_blob(2, version.application_name());
       advance.bind_blob(3, version.key());
@@ -319,7 +338,7 @@ namespace cipple::client
                                           const std::string_view key) const
   {
     auto& lookup = _statements->lookup_cursor;
-    lookup.restart();
+    const ResetStatement reset{lookup};
     lookup.bind_text(1, endpoint);
     lookup.bind_blob(2, application);
     lookup.bind_blob(3, key);

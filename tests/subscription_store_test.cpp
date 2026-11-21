@@ -2,6 +2,7 @@
 #include <sqlite3.h>
 
 #include <filesystem>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -67,6 +68,26 @@ namespace
     const auto replayed = store.accept("ep", delivery(entity, 2));
     EXPECT_FALSE(replayed.first_seen);
     EXPECT_EQ(store.cursor("ep", "app", "key"), 2);
+  }
+
+  TEST_F(SubscriptionStoreTest, CachedStatementsReleaseTheWalBetweenDeliveries)
+  {
+    SubscriptionStore store{_db.string()};
+    ASSERT_TRUE(store.accept("ep", delivery(update(1, "first"), 1)).first_seen);
+    ASSERT_EQ(store.cursor("ep", "app", "key"), 1);
+    ASSERT_TRUE(store.accept("ep", delivery(update(2, "second"), 2)).first_seen);
+    ASSERT_EQ(store.cursor("ep", "app", "key"), 2);
+
+    sqlite3* handle = nullptr;
+    const auto opened = sqlite3_open_v2(_db.string().c_str(), &handle, SQLITE_OPEN_READWRITE, nullptr);
+    const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> observer{handle, sqlite3_close};
+    ASSERT_EQ(opened, SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(observer.get(), "SELECT sequence FROM client_cursor", nullptr, nullptr, nullptr), SQLITE_OK);
+    int log_frames = -1;
+    int checkpointed_frames = -1;
+    EXPECT_EQ(sqlite3_wal_checkpoint_v2(observer.get(), "main", SQLITE_CHECKPOINT_TRUNCATE,
+                                         &log_frames, &checkpointed_frames), SQLITE_OK);
+    EXPECT_EQ(log_frames, 0);
   }
 
   TEST_F(SubscriptionStoreTest, ConflictingUuidFailsWithoutWritingAnything)
