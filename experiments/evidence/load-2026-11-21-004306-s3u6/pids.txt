@@ -1,6 +1,0 @@
-java-server1 pid=183552 api=13301 ui=14301
-java-server2 pid=66152 api=13302 ui=14302
-java-server3 pid=186692 api=13303 ui=14303
-cpp-server1 pid=183104 port=13401
-cpp-server2 pid=163212 port=13402
-cpp-server3 pid=185644 port=13403
