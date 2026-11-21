@@ -5,7 +5,7 @@
 
 namespace cipple::entity
 {
-  // 实体消息操作类型；线上仍按原版编码为 string
+  // 实体消息操作类型在线上编码为字符串。
   enum class OperationType : std::uint8_t
   {
     kUpdate,

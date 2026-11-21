@@ -12,7 +12,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(16) + uuid + applicationName + key + baseMessageUuid + atomicOperation + value
+  // Fields after the RPC UUID are applicationName + key + baseMessageUuid + atomicOperation + value.
   class IncrementalUpdateRequest final : public Message
   {
   public:

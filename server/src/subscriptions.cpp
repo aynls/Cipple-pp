@@ -185,7 +185,7 @@ namespace cipple::server
             base = delivery_base(version);
           }
           frame = tcp::encode_frame_shared(message::DispatchRequest{
-            Uuid::generate(), "", std::move(version), 0, std::move(base),
+            Uuid::generate(), std::move(version), 0, std::move(base),
           });
         }
         catch (const std::exception& error)
@@ -290,7 +290,7 @@ namespace cipple::server
       auto base = delivery_base(version);
       const auto reply_id = Uuid::generate();
       const auto frame = tcp::encode_frame_shared(message::DispatchRequest{
-        reply_id, "", std::move(version), sequence, std::move(base),
+        reply_id, std::move(version), sequence, std::move(base),
       });
       for (const auto id : recipients)
       {

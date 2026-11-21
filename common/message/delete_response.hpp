@@ -10,7 +10,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(7) + uuid + bool success
+  // Fields after the RPC UUID are bool success.
   class DeleteResponse final : public Message
   {
   public:

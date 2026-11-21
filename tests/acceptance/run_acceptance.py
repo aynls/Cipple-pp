@@ -1,7 +1,7 @@
 """Run the Cipple++ acceptance harness and write a Chinese report.
 
 Process cases use the official CMake binaries given by --server and --client.
-This harness does not compile the candidate.
+Run the harness after building the binaries.
 """
 
 from __future__ import annotations
@@ -10,7 +10,6 @@ import argparse
 import hashlib
 import json
 import os
-import subprocess
 import sys
 import tempfile
 import time
@@ -22,35 +21,21 @@ ROOT = ACCEPTANCE.parents[1]
 sys.path.insert(0, str(ACCEPTANCE))
 
 from cipple_acceptance.combined import run_combined  # noqa: E402
-from cipple_acceptance.m4 import run_m4  # noqa: E402
 from cipple_acceptance.mesh import run_mesh  # noqa: E402
 from cipple_acceptance.replication_ack import run_replication_ack  # noqa: E402
 from cipple_acceptance.replication_progress import run_replication_progress  # noqa: E402
 from cipple_acceptance.runtime import candidate_env, stop_all  # noqa: E402
 from cipple_acceptance.selftest import oracle_case, proxy_case  # noqa: E402
+from cipple_acceptance.single_node import run_single_node  # noqa: E402
 
 
 def _parse() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Cipple++ 黑盒验收。使用已构建的 CMake 可执行文件，不重新编译源码。")
     parser.add_argument("--server", type=Path, help="cipple_server 可执行文件")
     parser.add_argument("--client", type=Path, help="cipple_client 可执行文件")
-    parser.add_argument("--ripple-dir", type=Path, help="Java Ripple 仓库根目录，默认是候选仓库的同级 Ripple")
     parser.add_argument("--output", type=Path, help="报告和运行目录；省略时使用新建的系统临时目录")
     parser.add_argument("--bin-path", type=Path, help="前置到 PATH 的目录，供 sqlite3 等运行库使用")
-    parser.add_argument("--frozen-revision", default="", help="若给出，则 Cipple++ HEAD 必须等于该修订")
     return parser.parse_args()
-
-
-def _git(args: list[str], cwd: Path) -> str:
-    completed = subprocess.run(
-        ["git", "-C", str(cwd), *args],
-        check=False,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-    )
-    return (completed.stdout + completed.stderr).strip()
 
 
 def _sha256(path: Path) -> str:
@@ -76,20 +61,10 @@ def _render(report: dict) -> str:
         "Cipple++ 验收",
         f"时间 {report['started']}",
         f"仓库 {report['root']}",
-        f"Cipple++ HEAD {report['cipple_head']}",
-        f"冻结修订 {report['frozen_revision'] or '(未指定)'}",
-        f"Ripple {report['ripple_dir']}",
-        f"Ripple HEAD {report['ripple_head']}",
         f"PATH 前置 {report['bin_path'] or '(未前置)'}",
         f"server {report['server']['path']} {report['server']['sha256']}",
         f"client {report['client']['path']} {report['client']['sha256']}",
         f"输出 {report['output']}",
-        "",
-        "Cipple++ 工作区（验收开始时）：",
-        report["cipple_status"] or "(clean)",
-        "",
-        "Ripple 工作区：",
-        report["ripple_status"] or "(clean)",
         "",
     ]
     for case in report["cases"]:
@@ -118,7 +93,6 @@ def _append_exc(cases: list[dict], name: str, detail: str) -> None:
 def main() -> int:
     args = _parse()
     started = time.strftime("%Y-%m-%d %H:%M:%S")
-    ripple = (args.ripple_dir or (ROOT.parent / "Ripple")).resolve()
     output = args.output.resolve() if args.output else Path(tempfile.mkdtemp(prefix="cipple-acceptance-"))
     output.mkdir(parents=True, exist_ok=True)
     work = output / "work"
@@ -137,22 +111,6 @@ def main() -> int:
     sha_path = output / "SHA256SUMS.txt"
 
     cases: list[dict] = []
-    frozen = args.frozen_revision.strip()
-    head = _git(["rev-parse", "HEAD"], ROOT)
-    cipple_status = _git(["status", "--short"], ROOT)
-    ripple_head = _git(["rev-parse", "HEAD"], ripple)
-    ripple_status = _git(["status", "--short"], ripple)
-    if frozen:
-        matched = head == frozen
-        cases.append(
-            _case(
-                "frozen_revision",
-                "pass" if matched else "fail",
-                "候选 HEAD 与指定的冻结修订一致。" if matched else "候选 HEAD 不是指定的冻结修订。",
-                ["git rev-parse HEAD"],
-                [head, frozen],
-            )
-        )
     try:
         cases.append(oracle_case())
     except Exception:
@@ -166,7 +124,7 @@ def main() -> int:
     if ready:
         assert server is not None and client is not None
         runners = (
-            ("m4_runner", "单节点验收运行器自身失败。", run_m4, work / "m4"),
+            ("single_node_runner", "单节点验收运行器自身失败。", run_single_node, work / "single-node"),
             ("cluster_runner", "集群验收运行器自身失败。", run_combined, work / "cluster"),
             ("mesh_runner", "mesh 验收运行器自身失败。", run_mesh, work / "mesh"),
             ("replication_progress_runner", "复制补发验收运行器自身失败。", run_replication_progress, work / "progress"),
@@ -192,12 +150,6 @@ def main() -> int:
     report = {
         "started": started,
         "root": str(ROOT),
-        "cipple_head": head,
-        "frozen_revision": frozen,
-        "ripple_dir": str(ripple),
-        "ripple_head": ripple_head,
-        "cipple_status": cipple_status,
-        "ripple_status": ripple_status,
         "bin_path": str(bin_path) if bin_path else "",
         "server": {
             "path": str(server) if server else "",

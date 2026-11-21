@@ -10,7 +10,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(17) + uuid + bool success
+  // Fields after the RPC UUID are bool success.
   class IncrementalUpdateResponse final : public Message
   {
   public:

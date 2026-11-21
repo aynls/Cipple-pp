@@ -77,9 +77,6 @@ namespace cipple::storage
                                               std::span<const std::int32_t> target_node_ids,
                                               const entity::EntityMessage* supplied_base = nullptr) = 0;
 
-    // Returns true only when a registered target transitions to acknowledged.
-    virtual bool mark_acked(const Uuid& message_uuid, std::int32_t node_id) = 0;
-
     // Lists all known keys, including keys whose latest version is a deletion.
     virtual std::vector<ItemKey> list_keys() const = 0;
 
@@ -90,9 +87,6 @@ namespace cipple::storage
     virtual std::optional<entity::EntityMessage> latest(std::string_view application_name,
                                                         std::string_view key) const;
     virtual std::expected<entity::EntityMessage, MessageUnavailable> find_message(const Uuid& uuid) const = 0;
-    // A zero limit returns the full pending set.
-    virtual std::vector<entity::EntityMessage> pending_for_node(std::int32_t node_id, std::int64_t limit = 0) const = 0;
-    virtual std::vector<Uuid> pending_ids_for_node(std::int32_t node_id, std::int64_t limit) const = 0;
     // Page of unacknowledged targets in version order, strictly after `after`.
     // An empty cursor has no lower bound. A non-positive limit returns nothing.
     virtual std::vector<PendingId> pending_ids_after(std::int32_t node_id, const std::optional<PendingCursor>& after,

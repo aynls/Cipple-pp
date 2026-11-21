@@ -50,11 +50,6 @@ namespace cipple::tcp
     return read_u8() == 1;
   }
 
-  double BufferReader::read_f64()
-  {
-    return std::bit_cast<double>(read_u64());
-  }
-
   std::string BufferReader::read_string()
   {
     const auto length = read_u64();

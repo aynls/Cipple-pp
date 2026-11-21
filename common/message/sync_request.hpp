@@ -13,8 +13,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(4) + uuid + 实体公共段 + int32 fromId
-  // server 间同步：携带一条实体消息；entity().uuid() 即线上 messageUuid
+  // 副本同步携带实体、发送节点 ID 和增量更新引用的完整基底。
   class SyncRequest final : public Message
   {
   public:

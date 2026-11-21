@@ -84,7 +84,6 @@ namespace
       return outcome;
     }
 
-    bool mark_acked(const Uuid& uuid, const std::int32_t node) override { return _store.mark_acked(uuid, node); }
     std::vector<storage::ItemKey> list_keys() const override { return _store.list_keys(); }
 
     std::vector<EntityMessage> history(const std::string_view app, const std::string_view key) const override
@@ -104,16 +103,6 @@ namespace
     std::expected<EntityMessage, storage::MessageUnavailable> find_message(const Uuid& uuid) const override
     {
       return _store.find_message(uuid);
-    }
-
-    std::vector<EntityMessage> pending_for_node(const std::int32_t node, const std::int64_t limit) const override
-    {
-      return _store.pending_for_node(node, limit);
-    }
-
-    std::vector<Uuid> pending_ids_for_node(const std::int32_t node, const std::int64_t limit) const override
-    {
-      return _store.pending_ids_for_node(node, limit);
     }
 
     std::vector<storage::PendingId> pending_ids_after(const std::int32_t node,
@@ -226,7 +215,7 @@ namespace
                    std::string key = "key")
     {
       const auto rpc = Uuid::generate();
-      return client.send(message::SubscribeRequest{rpc, "app", std::move(key), "", 0, cursor})
+      return client.send(message::SubscribeRequest{rpc, "app", std::move(key), cursor})
           && run_until([&] { return client.reply<message::SubscribeResponse>(rpc); })
           && client.reply<message::SubscribeResponse>(rpc)->success();
     }
@@ -353,7 +342,9 @@ namespace
     ASSERT_TRUE(sync(retry));
     EXPECT_EQ(peer.reply<message::SyncResponse>(retry)->result(), message::Result::kDuplicated);
     EXPECT_EQ(disk.journal_after("app", "key", 0, 2).size(), 1);
-    EXPECT_EQ(disk.pending_ids_for_node(3, 2), std::vector{version.uuid()});
+    const auto pending = disk.pending_ids_after(3, std::nullopt, 2);
+    ASSERT_EQ(pending.size(), 1);
+    EXPECT_EQ(pending.front().uuid, version.uuid());
     ASSERT_TRUE(run_until([&] { return !watcher.dispatches().empty(); }));
     EXPECT_EQ(watcher.dispatches().front()->entity(), version);
     EXPECT_EQ(watcher.dispatches().front()->sequence(), sequence);

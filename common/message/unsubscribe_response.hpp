@@ -10,7 +10,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(15) + uuid + bool success
+  // Fields after the RPC UUID are bool success.
   class UnsubscribeResponse final : public Message
   {
   public:

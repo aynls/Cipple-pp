@@ -1,4 +1,4 @@
-"""Single-process checks against the candidate CLI and framed protocol."""
+"""Exercise single-node behavior through the CLI and framed protocol."""
 
 from __future__ import annotations
 
@@ -7,6 +7,9 @@ import uuid
 from pathlib import Path
 
 from cipple_acceptance.protocol import (
+    PUT_RESPONSE,
+    SUBSCRIBE_RESPONSE,
+    UNSUBSCRIBE_RESPONSE,
     Conn,
     decode_bool_response,
     decode_dispatch,
@@ -21,10 +24,6 @@ from cipple_acceptance.runtime import Child, cmdline, reserve_ports
 from cipple_acceptance.sqlite_obs import format_db, journal_has
 
 APP = b"acc"
-PUT_RESPONSE = 11
-INCREMENTAL_RESPONSE = 17
-SUBSCRIBE_RESPONSE = 13
-UNSUBSCRIBE_RESPONSE = 15
 
 
 def _case(name: str, status: str, detail: str, commands: list[str], observations: list[str]) -> dict:
@@ -60,12 +59,12 @@ def _endpoint(port: int) -> str:
     return f"127.0.0.1:{port}"
 
 
-def run_m4(server_bin: Path, client_bin: Path, work: Path, env: dict[str, str]) -> list[dict]:
+def run_single_node(server_bin: Path, client_bin: Path, work: Path, env: dict[str, str]) -> list[dict]:
     cases: list[dict] = []
     try:
         server, port = _start_server(server_bin, work / "node.db", env, work)
     except Exception as error:
-        return [_case("m4_server", "blocked", "单节点服务没有进入监听。", [], [str(error)])]
+        return [_case("single_node_server", "blocked", "单节点服务没有进入监听。", [], [str(error)])]
     try:
         cases.append(_usage(server_bin, client_bin, env, work))
         cases.append(_cli_crud_and_increment(client_bin, port, env, work))
@@ -164,19 +163,19 @@ def _cli_duplicate_and_empty(client_bin: Path, port: int, env: dict[str, str], w
         observations.append(f"exit={code} stdout={out!r} stderr={err.strip()!r}")
         return code, out, err
 
-    code, out, _err = run(["--request-id", str(request_id), endpoint, "put", "acc", "dup", "v1"])
+    code, out, _err = run(["--request-id", str(request_id), endpoint, "put", "acc", "dup", "initial"])
     if code != 0:
         return _case("cli_idempotent_put", "fail", "第一次写入失败。", commands, observations)
-    code, _out, err = run(["--request-id", str(request_id), endpoint, "put", "acc", "dup", "v2"])
+    code, _out, err = run(["--request-id", str(request_id), endpoint, "put", "acc", "dup", "conflict"])
     if code == 0:
         return _case("cli_idempotent_put", "fail", "同一 UUID 改了负载仍被接受。", commands, observations)
     observations.append(f"不同负载被拒绝: {err.strip()}")
-    code, out, _err = run(["--request-id", str(request_id), endpoint, "put", "acc", "dup", "v1"])
+    code, out, _err = run(["--request-id", str(request_id), endpoint, "put", "acc", "dup", "initial"])
     if code != 0:
         return _case("cli_idempotent_put", "fail", "相同负载的重试没有被当成已完成。", commands, observations)
     code, out, _err = run([endpoint, "get", "acc", "dup"])
-    if out != "v1\n":
-        return _case("cli_idempotent_put", "fail", f"重试之后的值是 {out!r}，不是 v1。", commands, observations)
+    if out != "initial\n":
+        return _case("cli_idempotent_put", "fail", f"重试后期望 initial，实际得到 {out!r}。", commands, observations)
     code, out, _err = run(["--request-id", str(uuid.uuid4()), endpoint, "put", "acc", "empty", ""])
     if code != 0:
         return _case("cli_idempotent_put", "fail", "空字符串写入失败。", commands, observations)
@@ -186,7 +185,7 @@ def _cli_duplicate_and_empty(client_bin: Path, port: int, env: dict[str, str], w
     return _case(
         "cli_idempotent_put",
         "pass",
-        "同一 UUID 只有负载一致才算成功重试，值保持 v1；空字符串和缺失是两种状态。",
+        "同一 UUID 只有负载一致时才能重试成功。读取可以区分空字符串和缺失。",
         commands,
         observations,
     )
@@ -411,7 +410,7 @@ def _benchmark(port: int) -> dict:
     return _case(
         "put_rtt",
         "pass",
-        "单连接顺序 put 的往返时间。Java 进程这次没有启动，避免往 Ripple 工作区写入构建产物。",
+        "单连接顺序 put 的往返时间。",
         [],
         [summary],
     )

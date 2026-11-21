@@ -39,11 +39,6 @@ namespace cipple::tcp
     write_u8(value ? 1 : 0);
   }
 
-  void BufferWriter::write_f64(const double value)
-  {
-    write_u64(std::bit_cast<std::uint64_t>(value));
-  }
-
   void BufferWriter::write_string(const std::string_view value)
   {
     write_u64(static_cast<std::uint64_t>(value.size()));

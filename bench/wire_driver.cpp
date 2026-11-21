@@ -3,6 +3,7 @@
 #include <boost/asio.hpp>
 
 #include <algorithm>
+#include <charconv>
 #include <chrono>
 #include <cstdio>
 #include <cstdint>
@@ -74,7 +75,7 @@ namespace
       {
         connect(endpoint, [this, i](std::shared_ptr<Session> s) {
           sub_sessions.push_back(s);
-          if (s->async_send(cipple::message::SubscribeRequest{Uuid::generate(), app, key, "", 0, resume_after}))
+          if (s->async_send(cipple::message::SubscribeRequest{Uuid::generate(), app, key, resume_after}))
           {
             ++errors;
           }
@@ -260,9 +261,17 @@ namespace cipple::bench
     d.value_bytes = arg_count(args, "--value-bytes", 256);
     d.gap = std::chrono::milliseconds{arg_count(args, "--gap-ms", 50)};
     d.deadline_ms = std::chrono::milliseconds{arg_count(args, "--deadline-ms", 15000)};
-    if (arg_flag(args, "--resume-after-present") || arg_count(args, "--resume-after", static_cast<std::size_t>(-1)) != static_cast<std::size_t>(-1))
+    if (const auto cursor = arg_string(args, "--resume-after"); !cursor.empty())
     {
-      d.resume_after = static_cast<std::int64_t>(arg_count(args, "--resume-after", 0));
+      std::int64_t sequence = 0;
+      const auto end = cursor.data() + cursor.size();
+      const auto [ptr, error] = std::from_chars(cursor.data(), end, sequence);
+      if (error != std::errc{} || ptr != end || sequence < 0)
+      {
+        std::fprintf(stderr, "--resume-after requires a nonnegative sequence\n");
+        return 2;
+      }
+      d.resume_after = sequence;
     }
 
     asio::ip::tcp::resolver resolver{d.io};

@@ -61,7 +61,7 @@ namespace cipple::bench
     const entity::EntityMessage entity{Uuid::generate(), "bench-app", "bench-key",
                                        1'700'000'000'000, 1,
                                        entity::EntityMessage::Update{std::string(value_bytes, 'x')}};
-    const message::DispatchRequest dispatch{Uuid::generate(), "subscribers", entity, 7};
+    const message::DispatchRequest dispatch{Uuid::generate(), entity, 7};
     const auto frame_size = tcp::encode_frame(dispatch).size();
 
     asio::io_context server_io, client_io;

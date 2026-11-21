@@ -8,14 +8,16 @@
 
 namespace cipple::message
 {
+  namespace
+  {
+    constexpr std::int64_t kLiveSubscription = -1;
+  }
+
   SubscribeRequest::SubscribeRequest(const Uuid uuid, std::string application_name, std::string key,
-                                     std::string callback_address, const std::int32_t callback_port,
                                      const std::optional<std::int64_t> resume_after)
     : Message{MessageType::kSubscribeRequest, uuid}
       , _application_name{std::move(application_name)}
       , _key{std::move(key)}
-      , _callback_address{std::move(callback_address)}
-      , _callback_port{callback_port}
       , _resume_after{resume_after}
   {
     if (_resume_after && *_resume_after < 0)
@@ -34,16 +36,6 @@ namespace cipple::message
     return _key;
   }
 
-  const std::string& SubscribeRequest::callback_address() const noexcept
-  {
-    return _callback_address;
-  }
-
-  std::int32_t SubscribeRequest::callback_port() const noexcept
-  {
-    return _callback_port;
-  }
-
   std::optional<std::int64_t> SubscribeRequest::resume_after() const noexcept
   {
     return _resume_after;
@@ -53,12 +45,7 @@ namespace cipple::message
   {
     writer.write_string(_application_name);
     writer.write_string(_key);
-    writer.write_string(_callback_address);
-    writer.write_i32(_callback_port);
-    if (_resume_after)
-    {
-      writer.write_i64(*_resume_after);
-    }
+    writer.write_i64(_resume_after.value_or(kLiveSubscription));
   }
 
   std::unique_ptr<SubscribeRequest> SubscribeRequest::decode(tcp::BufferReader& reader)
@@ -66,14 +53,8 @@ namespace cipple::message
     const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
     auto application_name = reader.read_string();
     auto key = reader.read_string();
-    auto callback_address = reader.read_string();
-    const auto callback_port = reader.read_i32();
-    std::optional<std::int64_t> resume_after;
-    if (reader.remaining() != 0)
-    {
-      resume_after = reader.read_i64();
-    }
-    return std::make_unique < SubscribeRequest > (uuid, std::move(application_name), std::move(key),
-      std::move(callback_address), callback_port, resume_after);
+    const auto cursor = reader.read_i64();
+    const auto resume_after = cursor == kLiveSubscription ? std::nullopt : std::optional{cursor};
+    return std::make_unique<SubscribeRequest>(uuid, std::move(application_name), std::move(key), resume_after);
   }
 }

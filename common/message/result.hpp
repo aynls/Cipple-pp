@@ -3,7 +3,7 @@
 
 namespace cipple::message
 {
-  // SyncResponse 结果码，线上单字节，取值沿用原版
+  // SyncResponse 使用一个字节携带结果码。
   enum class Result : std::uint8_t
   {
     kSuccess = 0,

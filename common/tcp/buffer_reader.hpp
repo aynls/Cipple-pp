@@ -19,7 +19,6 @@ namespace cipple::tcp
     std::int32_t read_i32();
     std::int64_t read_i64();
     bool read_bool(); // 单字节，1 为 true
-    double read_f64(); // IEEE-754 8 字节 BE
     std::string read_string(); // u64 长度前缀 + UTF-8 字节
     std::span<const std::uint8_t> read_bytes(std::size_t n); // 裸字节，零拷贝
 

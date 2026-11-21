@@ -2,7 +2,7 @@
 
 The candidate dials peer addresses, so those addresses are proxies. C starts
 partitioned. A commits an incremental, B persists it, and the proxy drops the
-one SyncResponse or ACK_REQUEST that would confirm B. A is then killed with
+one SyncResponse that would confirm B. A is then killed with
 its database kept. After restart the retry may be confirmed once; the
 incremental must still exist after a later delete masks the visible value.
 """
@@ -290,7 +290,7 @@ def _failover(cli, dead: int, port_b: int, commands: list[str], observations: li
         return _case(
             "node_failover",
             "pass",
-            "客户端按给定端点顺序跳过拒绝连接的节点，连到下一个存活节点。这是现有 Connector 的确定性行为，不是 Java 那种在哈希候选里随机挑选。",
+            "客户端按给定端点顺序跳过拒绝连接的节点，连到下一个存活节点。",
             commands[-1:],
             [err.strip()],
         )

@@ -2,10 +2,8 @@
 
 A proxy is the only fault injector. It can refuse connections, and it can drop
 exactly one durability confirmation for a chosen entity before refusing. The
-confirmation is a SyncResponse (type 5, result success or duplicated) whose
-RPC id was observed on the SyncRequest carrying that entity. An ACK_REQUEST
-(type 2) naming the same entity is also treated as a confirmation, because
-that is the Java-shaped receipt the task statement still names.
+confirmation is a successful or duplicate SyncResponse whose
+RPC id was observed on the SyncRequest carrying that entity.
 """
 
 from __future__ import annotations
@@ -16,7 +14,7 @@ import threading
 import uuid
 from dataclasses import dataclass, field
 
-from cipple_acceptance.protocol import ACK_REQUEST, MAX_FRAME, SYNC_REQUEST, SYNC_RESPONSE
+from cipple_acceptance.protocol import MAX_FRAME, SYNC_REQUEST, SYNC_RESPONSE
 
 
 @dataclass
@@ -62,16 +60,10 @@ class DropPlan:
                 detail = f"result={result}"
                 if self.drop_first and rpc in self.rpc_ids and result in (0, 1) and self.dropped == 0 and not self.refusing:
                     drop = True
-            elif msg_type == ACK_REQUEST and len(body) >= 41:
-                message = uuid.UUID(bytes=body[17:33])
-                node_id = struct.unpack(">i", body[37:41])[0]
-                detail = f"message={message} node={node_id}"
-                if self.drop_first and message == self.entity and self.dropped == 0 and not self.refusing:
-                    drop = True
             if drop:
                 self.dropped += 1
                 self.refusing = True
-            if msg_type in (SYNC_REQUEST, SYNC_RESPONSE, ACK_REQUEST) and len(self.notes) < 200:
+            if msg_type in (SYNC_REQUEST, SYNC_RESPONSE) and len(self.notes) < 200:
                 self.notes.append(
                     FrameNote(proxy, direction, msg_type, str(rpc) if rpc else "", detail, drop)
                 )

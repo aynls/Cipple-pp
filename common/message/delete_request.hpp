@@ -11,7 +11,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(6) + uuid + applicationName + key
+  // Fields after the RPC UUID are applicationName + key.
   class DeleteRequest final : public Message
   {
   public:

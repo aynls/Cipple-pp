@@ -5,7 +5,7 @@
 
 namespace cipple::entity
 {
-  // 增量更新的原子操作；线上按原版编码为 string
+  // 增量更新的原子操作在线上编码为字符串。
   enum class AtomicOperation : std::uint8_t
   {
     kAddEntry,

@@ -30,7 +30,7 @@ namespace
   DispatchRequest delivery(const EntityMessage& entity, const std::int64_t sequence,
                            std::optional<EntityMessage> base = std::nullopt)
   {
-    return {Uuid::generate(), "", entity, sequence, std::move(base)};
+    return {Uuid::generate(), entity, sequence, std::move(base)};
   }
 
   class SubscriptionStoreTest : public testing::Test
@@ -103,20 +103,23 @@ namespace
     EXPECT_EQ(store.cursor("ep", "app", "key"), 3);
   }
 
-  TEST_F(SubscriptionStoreTest, IncrementResolvesFromStoredBase)
+  TEST_F(SubscriptionStoreTest, IncrementChecksCarriedBaseAgainstStoredValue)
   {
     SubscriptionStore store{_db.string()};
     const auto base = update(1, "a-x-x-b");
     ASSERT_TRUE(store.accept("ep", delivery(base, 1)).first_seen);
     const EntityMessage delta{Uuid::generate(), "app", "key", 2, 1,
         EntityMessage::IncrementalUpdate{base.uuid(), AtomicOperation::kRemoveEntry, "-x"}};
-    const auto accepted = store.accept("ep", delivery(delta, 2));
+    const EntityMessage conflicting_base{base.uuid(), "app", "key", 1, 1, EntityMessage::Update{"different"}};
+    EXPECT_THROW(store.accept("ep", delivery(delta, 2, conflicting_base)), std::runtime_error);
+    EXPECT_EQ(store.cursor("ep", "app", "key"), 1);
+    const auto accepted = store.accept("ep", delivery(delta, 2, base));
     EXPECT_TRUE(accepted.first_seen);
     ASSERT_TRUE(accepted.value);
     EXPECT_EQ(*accepted.value, "a-b");
   }
 
-  TEST_F(SubscriptionStoreTest, IncrementCanUseTheCarriedFullBase)
+  TEST_F(SubscriptionStoreTest, IncrementUsesTheCarriedFullBase)
   {
     SubscriptionStore store{_db.string()};
     const auto base = update(1, "a-x-x-b");
@@ -128,12 +131,12 @@ namespace
     EXPECT_EQ(*accepted.value, "a-b");
   }
 
-  TEST_F(SubscriptionStoreTest, IncrementWithoutAnyBaseFails)
+  TEST_F(SubscriptionStoreTest, IncrementWithWrongBaseFails)
   {
     SubscriptionStore store{_db.string()};
     const EntityMessage delta{Uuid::generate(), "app", "key", 2, 1,
         EntityMessage::IncrementalUpdate{Uuid::generate(), AtomicOperation::kAddEntry, "x"}};
-    EXPECT_THROW(store.accept("ep", delivery(delta, 1)), std::runtime_error);
+    EXPECT_THROW(store.accept("ep", delivery(delta, 1, update(1, "other"))), std::runtime_error);
     EXPECT_EQ(store.cursor("ep", "app", "key"), 0);
   }
 

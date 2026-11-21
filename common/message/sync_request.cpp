@@ -1,5 +1,6 @@
 #include "sync_request.hpp"
 
+#include <stdexcept>
 #include <utility>
 
 #include "tcp/buffer_reader.hpp"
@@ -14,6 +15,10 @@ namespace cipple::message
       , _from_id{from_id}
       , _base{std::move(base)}
   {
+    if (_base.has_value() != (_entity.operation_type() == entity::OperationType::kIncrementalUpdate))
+    {
+      throw std::invalid_argument{"sync must carry a base for incremental updates only"};
+    }
   }
 
   const entity::EntityMessage& SyncRequest::entity() const noexcept
@@ -47,7 +52,7 @@ namespace cipple::message
     auto entity = entity::EntityMessage::decode(reader);
     const auto from_id = reader.read_i32();
     std::optional<entity::EntityMessage> base;
-    if (reader.remaining() != 0)
+    if (entity.operation_type() == entity::OperationType::kIncrementalUpdate)
     {
       base = entity::EntityMessage::decode(reader);
     }

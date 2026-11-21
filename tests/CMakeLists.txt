@@ -11,6 +11,7 @@ add_executable(cipple_tests
         main.cpp
         buffer_reader_test.cpp
         buffer_writer_test.cpp
+        message_protocol_test.cpp
         sqlite_storage_test.cpp
         storage_writer_test.cpp
         subscription_store_test.cpp

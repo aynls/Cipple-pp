@@ -1,7 +1,6 @@
 # Cipple++
 
-用 C++23 重写 Ripple —— 面向大规模集群的发布/订阅式配置分发系统。
-参考实现：`D:\UCAS\OOPLab\Ripple`。完整设计见 `任务书.md`。
+面向集群的 C++23 配置发布订阅系统。项目设计见 `任务书.md` 和 `doc/architecture.md`。
 
 ## 约定
 

@@ -472,10 +472,13 @@ namespace cipple::server
         std::optional<EntityMessage> base;
         if (const auto* delta = std::get_if<EntityMessage::IncrementalUpdate>(&entity->payload()))
         {
-          if (auto found = _reads.find_message(delta->base_message_uuid))
+          auto found = _reads.find_message(delta->base_message_uuid);
+          if (!found)
           {
-            base = std::move(*found);
+            peer.staged.erase(message_uuid);
+            continue;
           }
+          base = std::move(*found);
         }
 
         // A new correlation ID identifies this attempt, while the entity ID deduplicates retries.
@@ -729,7 +732,6 @@ namespace cipple::server
         }
         break;
       default:
-        // SyncRequest 由接收侧处理；第三方 AckRequest 不作为回执凭据。
         break;
       }
     }

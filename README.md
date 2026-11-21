@@ -1,6 +1,6 @@
 # Cipple++
 
-Cipple++ 是 Ripple 的 C++23 配置发布订阅实现。服务按 `(application, key)` 管理全量更新、增量和删除。副本通过 TCP 同步已持久化的版本，订阅端可以在断线、进程重启和换节点后补齐更新。
+Cipple++ 是使用 C++23 实现的分布式配置发布订阅系统。服务按 `(application, key)` 管理全量更新、增量和删除。副本通过 TCP 同步已持久化的配置，持久订阅可以在断线、进程重启和换节点后补齐更新。
 
 设计导读见[项目架构](doc/architecture.md)。
 
@@ -35,6 +35,8 @@ CMake 首次配置下载带 SHA256 校验的 GoogleTest 1.15.2。离线环境可
 
 ## 启动集群
 
+首次启动时指定数据库路径。服务端在空库中创建所需的表和索引，重启时使用同一路径恢复数据。
+
 在三个终端分别启动副本。每个副本使用自己的 SQLite 文件和唯一正整数节点 ID，同一集群的节点配置同一组成员。
 
 ```powershell
@@ -65,14 +67,14 @@ build/client/cipple_client.exe 7001 delete catalog feature
 
 ## 核对交付
 
-构建后运行黑盒验收。脚本启动真实进程，注入回执丢失、网络分区、接收端拒绝旧版本和发送端确认落盘失败。脚本读取独立 SQLite 文件核对持久化与确认进度。失败或阻塞的用例会使进程返回非零。
+构建后运行黑盒验收。脚本启动真实进程，注入回执丢失、网络分区、接收端拒绝较早的更新和发送端确认落盘失败。脚本读取 SQLite 文件核对持久化与确认进度。失败或阻塞的用例会使进程返回非零。
 
 ```powershell
 py -3 tests/acceptance/run_acceptance.py --server build/server/cipple_server.exe --client build/client/cipple_client.exe
 ```
 
-脚本输出临时目录中的 JSON、文本报告和 SHA256 校验值。运行库不在 PATH 时可传入 `--bin-path`。Java 参考库位于其他目录时可传入 `--ripple-dir`。
+脚本输出临时目录中的 JSON、文本报告和 SHA256 校验值。运行库不在 PATH 时可传入 `--bin-path`。
 
 - [行为、协议和保证](doc/behavior.md)
-- [Java/C++ 对照实验](experiments/README.md)
-- [课程报告与多 Agent 复盘](doc/delivery.md)
+- [性能测量](bench/README.md)
+- [验证与交付](doc/delivery.md)

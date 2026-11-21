@@ -57,9 +57,6 @@ namespace cipple::server
   public:
     static std::shared_ptr<Server> start(boost::asio::io_context& context,
                                         const boost::asio::ip::tcp::endpoint& endpoint,
-                                        std::unique_ptr<storage::StorageWriter> storage, std::int32_t node_id = 0);
-    static std::shared_ptr<Server> start(boost::asio::io_context& context,
-                                        const boost::asio::ip::tcp::endpoint& endpoint,
                                         std::unique_ptr<storage::StorageWriter> storage, ServerOptions options);
     ~Server() noexcept;
 

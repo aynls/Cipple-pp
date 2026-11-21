@@ -10,7 +10,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(13) + uuid + bool success
+  // Fields after the RPC UUID are bool success.
   class SubscribeResponse final : public Message
   {
   public:

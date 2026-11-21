@@ -13,7 +13,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(9) + uuid + applicationName + key + value
+  // The response carries the key, materialized value and its contributing entities.
   //       + int32 itemsCount + items[实体公共段]
   // 单服务端返回当前版本，若依赖增量基底，则基底排在当前版本前面。
   class GetResponse final : public Message

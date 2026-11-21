@@ -257,29 +257,18 @@ namespace cipple::client
     const auto& version = dispatch.entity();
     if (const auto* increment = std::get_if<EntityMessage::IncrementalUpdate>(&version.payload()))
     {
-      if (const auto& base = dispatch.base())
+      const auto& base = *dispatch.base();
+      const auto* full = std::get_if<EntityMessage::Update>(&base.payload());
+      if (!full || base.uuid() != increment->base_message_uuid || base.application_name() != version.application_name()
+        || base.key() != version.key())
       {
-        const auto* full = std::get_if<EntityMessage::Update>(&base->payload());
-        if (!full || base->uuid() != increment->base_message_uuid || base->application_name() != version.application_name()
-          || base->key() != version.key())
-        {
-          throw std::runtime_error{"incremental delivery has an invalid full base"};
-        }
-        if (saved_base && *saved_base != full->value)
-        {
-          throw std::runtime_error{"incremental delivery disagrees with the persisted full base"};
-        }
-        saved_base = full->value;
+        throw std::runtime_error{"incremental delivery has an invalid full base"};
       }
-      if (!saved_base)
+      if (saved_base && *saved_base != full->value)
       {
-        throw std::runtime_error{"incremental delivery is missing its full base"};
+        throw std::runtime_error{"incremental delivery disagrees with the persisted full base"};
       }
-      return entity::apply_increment(*saved_base, *increment);
-    }
-    if (dispatch.base())
-    {
-      throw std::runtime_error{"non-incremental delivery includes a base"};
+      return entity::apply_increment(full->value, *increment);
     }
     if (const auto* update = std::get_if<EntityMessage::Update>(&version.payload()))
     {

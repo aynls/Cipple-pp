@@ -10,7 +10,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(0) + uuid
+  // This message carries only the RPC UUID.
   class HeartbeatRequest final : public Message
   {
   public:

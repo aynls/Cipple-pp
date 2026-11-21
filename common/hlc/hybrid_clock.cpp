@@ -9,10 +9,10 @@ namespace cipple::hlc
 {
   namespace
   {
-    constexpr std::int64_t kPackedTag = std::int64_t{1} << 62;
+    constexpr std::int64_t kEpochOffset = std::int64_t{1} << 62;
     constexpr std::int64_t kLogicalRange = std::int64_t{1} << 16;
     constexpr std::int64_t kLargestVersion = std::numeric_limits<std::int64_t>::max();
-    constexpr std::int64_t kLargestMillis = (kLargestVersion - kPackedTag) / kLogicalRange;
+    constexpr std::int64_t kLargestMillis = (kLargestVersion - kEpochOffset) / kLogicalRange;
     constexpr std::int64_t kMaxClockOffsetMs = 86'400'000;
 
     std::int64_t pack(const std::int64_t milliseconds)
@@ -21,7 +21,7 @@ namespace cipple::hlc
       {
         throw std::out_of_range{"physical clock outside supported epoch milliseconds"};
       }
-      return kPackedTag + milliseconds * kLogicalRange;
+      return kEpochOffset + milliseconds * kLogicalRange;
     }
   }
 
@@ -33,11 +33,9 @@ namespace cipple::hlc
     }
   }
 
-  void HybridClock::observe(const std::int64_t version)
+  void HybridClock::observe(const std::int64_t version) noexcept
   {
-    // Pre-HLC databases ordered by signed epoch milliseconds. Retain that order on disk.
-    const auto observed = version >= kPackedTag ? version : pack(std::max<std::int64_t>(0, version));
-    _last = std::max(_last, observed);
+    _last = std::max(_last, version);
   }
 
   std::int64_t HybridClock::tick()

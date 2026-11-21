@@ -1,6 +1,6 @@
-# 候选进程必须保持的命令与观测面
+# 黑盒验收的命令与观测面
 
-验收脚本只通过下面这些已经公开的入口驱动进程。代理在本机转发 TCP，不改机器时钟，不修改候选实现。报告、数据库和临时文件写到 `--output`；该目录可以放在系统临时目录里，这样验收产物不会进仓库。
+验收脚本通过公开命令驱动 Cipple++ 进程。代理在本机转发 TCP，时钟偏移由进程参数控制。报告、数据库和临时文件写到 `--output`，默认使用系统临时目录。
 
 ## 服务端
 
@@ -34,17 +34,16 @@ cipple_client [--verbose] [--timeout-ms MS] ENDPOINT,ENDPOINT get APP KEY
 - `--request-id` 是写入的消息 UUID。负载相同的重试返回成功且不新增版本；负载不同必须拒绝，原版本保持不变。
 - `--state` 把订阅游标和已见消息 UUID 存在调用者给出的数据库里。重连同一端点时从该游标补发，包括已经被更新的删除遮蔽掉的增量。
 - 当前值打到标准输出，历史版本的 UUID 打到标准错误，输出都要及时刷新。删除的当前值打印 `<deleted>`。
-- 不带 `--state` 的订阅是会话内实时推送，空回调地址、端口 0。退订后不再推这个键。
+- 不带 `--state` 的订阅是会话内实时推送，订阅游标为 −1。退订后不再推这个键。
 
 ## 确认帧，必须能被代理单独丢掉
 
 复制头注释里的契约是：对端把 SyncRequest 持久化之后，才回 SyncResponse；源节点只在收到结果为成功或重复（0 或 1）时，才把 `ack.acknowledged` 置 1。
 
-因此 SyncResponse（类型 5）必须是独立的一帧，不能和 SyncRequest 粘成一次“发出即确认”。帧布局：
+SyncResponse 是一个独立帧。代理按请求 UUID 识别要丢弃的回执。
 
-- SyncRequest：类型 4，RPC UUID，随后是实体；实体本身以消息 UUID 开头。
-- SyncResponse：类型 5，同一个 RPC UUID，然后一个结果字节。
-- 若实现改走 Java 形态的 ACK_REQUEST（类型 2），它必须携带消息 UUID 和 node id，并且源节点只有收到它之后才确认。测试会丢弃这两种确认里先到的那一帧，且只丢一帧。
+- SyncRequest 使用类型 2，RPC UUID 后是实体和发送节点 ID。实体以消息 UUID 开头，增量同步还携带完整基底。
+- SyncResponse 使用类型 3，携带同一个 RPC UUID 和一个结果字节。
 
 拒绝结果（2）不是持久化确认，丢掉它不能代替上面的测试。
 
@@ -64,7 +63,7 @@ cipple_client [--verbose] [--timeout-ms MS] ENDPOINT,ENDPOINT get APP KEY
 
 ## 和当前复制实现的对应关系
 
-`server/src/replication.cpp` 中的 `Replication` 已经接入服务端。集群用例直接观察这条路径。每次发送使用新的 RPC UUID，实体 UUID 才是去重身份。源节点只在该次 in-flight RPC 收到 SyncResponse、且结果为成功或重复（0 或 1）时调用 `mark_acked`。会话仍在时，丢失回复后的第一次重发等待是 2 秒。丢弃确认的代理会立刻拆掉连接并拒绝后续连接，未完成的尝试回到队列，不能在拒绝期间靠退避把确认补上。ACK_REQUEST 不是回执。
+`server/src/replication.cpp` 中的 `Replication` 使用 RPC UUID 关联每次发送，实体 UUID 用于去重。收到匹配的 SyncResponse 且结果为成功或重复（0 或 1）后，源节点将该实体加入批量确认队列。会话仍在时，丢失回复后的第一次重发等待是 2 秒。丢弃确认的代理会立刻拆掉连接并拒绝后续连接，未完成的尝试回到待发队列。
 
 `--overlay mesh` 时，已经持久化该版本的接收节点继续向其余 peer 传播。源节点在副本落盘后退出并保持死亡，只恢复其余节点之间的连接，持有副本的节点仍应把版本送到此前被隔离开的节点。`--overlay star` 不转发这条路径。
 

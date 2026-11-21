@@ -1,11 +1,7 @@
-"""Expected configuration state.
+"""Compute expected configuration state for the acceptance cases.
 
-Java's LastWriteWinsResolver sorts by timestamp only and resolves a delete to
-null, which hides earlier increments in the visible value. The replacement
-contract keeps every retained message and orders versions by
-(HLC, server id, UUID). add_entry appends; remove_entry deletes every literal
-occurrence, matching Java String.replace and the candidate's apply_increment.
-A repeated UUID is the same message and must not be applied again.
+Order entities by (HLC, server id, UUID). Deletes hide the visible value.
+Apply increments to their referenced full values and apply each UUID only once.
 """
 
 from __future__ import annotations
@@ -73,7 +69,7 @@ def check_oracle() -> list[str]:
         raise AssertionError(f"remove_entry produced {replaced!r}")
     if apply_increment("a-x-x-b", "remove_entry", "") != "a-x-x-b":
         raise AssertionError("empty remove_entry changed the base")
-    notes.append("remove_entry 删除全部字面量，空片段不改变原文，与 Java String.replace 一致")
+    notes.append("remove_entry 删除全部字面匹配，空片段不改变原文")
 
     once = absorb(absorb([base], incremental), incremental)
     if len(once) != 2 or resolve(once) != "base+inc":

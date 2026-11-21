@@ -22,17 +22,14 @@ compile_commands.json
 *.pdb
 *.ilk
 
-# Python experiment and demo bytecode
+# Python tool bytecode
 __pycache__/
 *.pyc
 
-# Local acceptance and experiment output
+# Local acceptance output
 /tests/acceptance/_build/
 /tests/acceptance/work/
 /tests/acceptance/results/
-/experiments/load/results/
-/experiments/java/results/smoke-20*/
-!/experiments/java/results/smoke-2026-11-20-manual/
 
 # Operating system files
 .DS_Store

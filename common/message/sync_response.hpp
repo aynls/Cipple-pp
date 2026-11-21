@@ -11,7 +11,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(5) + uuid + byte result
+  // Fields after the RPC UUID are byte result.
   class SyncResponse final : public Message
   {
   public:

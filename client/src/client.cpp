@@ -219,13 +219,13 @@ namespace cipple::client
   void Client::subscribe(std::string application_name, std::string key, StatusHandler on_done,
                          const std::optional<std::int64_t> resume_after)
   {
-    send(message::SubscribeRequest{Uuid::generate(), std::move(application_name), std::move(key), "", 0, resume_after},
+    send(message::SubscribeRequest{Uuid::generate(), std::move(application_name), std::move(key), resume_after},
          MessageType::kSubscribeResponse, status_handler<message::SubscribeResponse>(std::move(on_done)));
   }
 
   void Client::unsubscribe(std::string application_name, std::string key, StatusHandler on_done)
   {
-    send(message::UnsubscribeRequest{Uuid::generate(), std::move(application_name), std::move(key), "", 0},
+    send(message::UnsubscribeRequest{Uuid::generate(), std::move(application_name), std::move(key)},
          MessageType::kUnsubscribeResponse, status_handler<message::UnsubscribeResponse>(std::move(on_done)));
   }
 

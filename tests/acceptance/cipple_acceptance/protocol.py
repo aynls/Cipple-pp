@@ -1,4 +1,4 @@
-"""Cipple++ v1 frame codec.
+"""Cipple++ frame codec.
 
 Frame = int32 BE length (bytes after the length) + uint8 type + 16-byte UUID + fields.
 Strings are uint64 BE length + raw bytes. Integers are big-endian.
@@ -13,26 +13,24 @@ from dataclasses import dataclass
 
 MAX_FRAME = 16 * 1024 * 1024
 
-PUT_REQUEST = 10
-PUT_RESPONSE = 11
-DELETE_REQUEST = 6
-DELETE_RESPONSE = 7
-GET_REQUEST = 8
-GET_RESPONSE = 9
-SUBSCRIBE_REQUEST = 12
-SUBSCRIBE_RESPONSE = 13
-UNSUBSCRIBE_REQUEST = 14
-UNSUBSCRIBE_RESPONSE = 15
-INCREMENTAL_REQUEST = 16
-INCREMENTAL_RESPONSE = 17
-SYNC_REQUEST = 4
-SYNC_RESPONSE = 5
-ACK_REQUEST = 2
-ACK_RESPONSE = 3
-DISPATCH_REQUEST = 18
-DISPATCH_RESPONSE = 19
 HEARTBEAT_REQUEST = 0
 HEARTBEAT_RESPONSE = 1
+SYNC_REQUEST = 2
+SYNC_RESPONSE = 3
+DELETE_REQUEST = 4
+DELETE_RESPONSE = 5
+GET_REQUEST = 6
+GET_RESPONSE = 7
+PUT_REQUEST = 8
+PUT_RESPONSE = 9
+SUBSCRIBE_REQUEST = 10
+SUBSCRIBE_RESPONSE = 11
+UNSUBSCRIBE_REQUEST = 12
+UNSUBSCRIBE_RESPONSE = 13
+INCREMENTAL_REQUEST = 14
+INCREMENTAL_RESPONSE = 15
+DISPATCH_REQUEST = 16
+DISPATCH_RESPONSE = 17
 
 OP_UPDATE = "update"
 OP_DELETE = "delete"
@@ -164,7 +162,6 @@ def decode_entity(reader: Reader) -> Entity:
 @dataclass
 class Dispatch:
     uuid: uuid.UUID
-    signature: str
     entity: Entity
     sequence: int
     base: Entity | None
@@ -193,18 +190,14 @@ def subscribe_request(
     application: bytes,
     key: bytes,
     *,
-    callback: bytes = b"",
-    port: int = 0,
     resume_after: int | None = None,
 ) -> bytes:
-    fields = _str(application) + _str(key) + _str(callback) + _i32(port)
-    if resume_after is not None:
-        fields += _i64(resume_after)
-    return frame(SUBSCRIBE_REQUEST, msg_id, fields)
+    cursor = -1 if resume_after is None else resume_after
+    return frame(SUBSCRIBE_REQUEST, msg_id, _str(application) + _str(key) + _i64(cursor))
 
 
 def unsubscribe_request(msg_id: uuid.UUID, application: bytes, key: bytes) -> bytes:
-    return frame(UNSUBSCRIBE_REQUEST, msg_id, _str(application) + _str(key) + _str(b"") + _i32(0))
+    return frame(UNSUBSCRIBE_REQUEST, msg_id, _str(application) + _str(key))
 
 
 def incremental_request(
@@ -235,17 +228,12 @@ def decode_dispatch(body: bytes) -> Dispatch:
     msg_type, msg_id, reader = decode_body(body)
     if msg_type != DISPATCH_REQUEST:
         raise ProtocolError(f"expected dispatch, got type {msg_type}")
-    signature = reader.text()
     entity = decode_entity(reader)
-    sequence = 0
-    base = None
-    if reader.remaining():
-        sequence = reader.i64()
-        if reader.remaining():
-            base = decode_entity(reader)
-    if reader.remaining():
-        raise ProtocolError("trailing bytes in dispatch")
-    return Dispatch(msg_id, signature, entity, sequence, base)
+    sequence = reader.i64()
+    base = decode_entity(reader) if entity.op == OP_INCREMENTAL else None
+    if sequence < 0 or reader.remaining():
+        raise ProtocolError("invalid dispatch sequence or trailing bytes")
+    return Dispatch(msg_id, entity, sequence, base)
 
 
 @dataclass
@@ -303,13 +291,6 @@ def sync_result(body: bytes) -> int | None:
     if not body or body[0] != SYNC_RESPONSE or len(body) < 18:
         return None
     return body[17]
-
-
-def ack_target(body: bytes) -> tuple[uuid.UUID, int] | None:
-    """(message uuid, node id) of an ACK_REQUEST, the Java-shaped confirmation."""
-    if not body or body[0] != ACK_REQUEST or len(body) < 41:
-        return None
-    return uuid.UUID(bytes=body[17:33]), struct.unpack(">i", body[37:41])[0]
 
 
 class Conn:

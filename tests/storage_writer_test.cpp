@@ -47,10 +47,6 @@ namespace
     {
       return {AppendResult::kInserted, true};
     }
-    bool mark_acked(const Uuid&, std::int32_t) override
-    {
-      return true;
-    }
     std::vector<ItemKey> list_keys() const override
     {
       return {};
@@ -62,14 +58,6 @@ namespace
     std::expected<EntityMessage, MessageUnavailable> find_message(const Uuid&) const override
     {
       return std::unexpected{MessageUnavailable::kMissing};
-    }
-    std::vector<EntityMessage> pending_for_node(std::int32_t, std::int64_t) const override
-    {
-      return {};
-    }
-    std::vector<Uuid> pending_ids_for_node(std::int32_t, std::int64_t) const override
-    {
-      return {};
     }
     std::vector<cipple::storage::PendingId> pending_ids_after(std::int32_t,
         const std::optional<cipple::storage::PendingCursor>&, std::int64_t) const override

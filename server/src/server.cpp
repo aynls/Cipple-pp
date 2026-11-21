@@ -138,12 +138,6 @@ namespace cipple::server
   };
 
   std::shared_ptr<Server> Server::start(asio::io_context& context, const asio::ip::tcp::endpoint& endpoint,
-                                        std::unique_ptr<storage::StorageWriter> storage, const std::int32_t node_id)
-  {
-    return start(context, endpoint, std::move(storage), ServerOptions{.node_id = node_id});
-  }
-
-  std::shared_ptr<Server> Server::start(asio::io_context& context, const asio::ip::tcp::endpoint& endpoint,
                                         std::unique_ptr<storage::StorageWriter> storage, ServerOptions options)
   {
     if (!storage)
@@ -383,7 +377,7 @@ namespace cipple::server
     const auto configured = [this](const std::int32_t id) {
       return std::ranges::find(_peer_ids, id) != _peer_ids.end();
     };
-    if (!configured(request.from_id()) || (origin != 0 && origin != _node_id && !configured(origin)))
+    if (!configured(request.from_id()) || (origin != _node_id && !configured(origin)))
     {
       send(session, message::SyncResponse{request.uuid(), Result::kRejected});
       return;
@@ -430,9 +424,7 @@ namespace cipple::server
             return;
           }
 
-          const auto stored_base = supplied ? std::optional<EntityMessage>{} : lookup_base(store, version);
-          if ((supplied && version.operation_type() != entity::OperationType::kIncrementalUpdate)
-              || !fits_read_response(version, supplied ? outcome->base : stored_base))
+          if (!fits_read_response(version, outcome->base))
           {
             return;
           }
@@ -559,13 +551,8 @@ namespace cipple::server
       case MessageType::kSubscribeRequest:
         {
           const auto& request = static_cast<const message::SubscribeRequest&>(message);
-          // Empty address and port zero select dispatch over the same TCP session.
-          const bool in_session = request.callback_address().empty() && request.callback_port() == 0;
-          if (in_session)
-          {
-            _subscriptions->subscribe(connection_id, {request.application_name(), request.key()}, request.resume_after());
-          }
-          if (send(session, message::SubscribeResponse{request.uuid(), in_session}) && in_session)
+          _subscriptions->subscribe(connection_id, {request.application_name(), request.key()}, request.resume_after());
+          if (send(session, message::SubscribeResponse{request.uuid(), true}))
           {
             schedule_replay();
           }
@@ -574,12 +561,8 @@ namespace cipple::server
       case MessageType::kUnsubscribeRequest:
         {
           const auto& request = static_cast<const message::UnsubscribeRequest&>(message);
-          const bool in_session = request.callback_address().empty() && request.callback_port() == 0;
-          if (in_session)
-          {
-            _subscriptions->unsubscribe(connection_id, {request.application_name(), request.key()});
-          }
-          send(session, message::UnsubscribeResponse{request.uuid(), in_session});
+          _subscriptions->unsubscribe(connection_id, {request.application_name(), request.key()});
+          send(session, message::UnsubscribeResponse{request.uuid(), true});
           break;
         }
       case MessageType::kDispatchResponse:

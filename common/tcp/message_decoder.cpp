@@ -4,14 +4,10 @@
 #include <stdexcept>
 
 #include "buffer_reader.hpp"
-#include "message/ack_request.hpp"
-#include "message/ack_response.hpp"
 #include "message/delete_request.hpp"
 #include "message/delete_response.hpp"
 #include "message/dispatch_request.hpp"
 #include "message/dispatch_response.hpp"
-#include "message/get_client_list_request.hpp"
-#include "message/get_client_list_response.hpp"
 #include "message/get_request.hpp"
 #include "message/get_response.hpp"
 #include "message/heartbeat_request.hpp"
@@ -26,8 +22,6 @@
 #include "message/subscribe_response.hpp"
 #include "message/sync_request.hpp"
 #include "message/sync_response.hpp"
-#include "message/system_info_request.hpp"
-#include "message/system_info_response.hpp"
 #include "message/unsubscribe_request.hpp"
 #include "message/unsubscribe_response.hpp"
 
@@ -41,12 +35,9 @@ namespace cipple::tcp
       return T::decode(reader);
     }
 
-    // Immutable dispatch table, indexed by the v1 wire type (0..23).
     constexpr std::array kDecoders{
       &decode_as<message::HeartbeatRequest>,
       &decode_as<message::HeartbeatResponse>,
-      &decode_as<message::AckRequest>,
-      &decode_as<message::AckResponse>,
       &decode_as<message::SyncRequest>,
       &decode_as<message::SyncResponse>,
       &decode_as<message::DeleteRequest>,
@@ -63,20 +54,16 @@ namespace cipple::tcp
       &decode_as<message::IncrementalUpdateResponse>,
       &decode_as<message::DispatchRequest>,
       &decode_as<message::DispatchResponse>,
-      &decode_as<message::GetClientListRequest>,
-      &decode_as<message::GetClientListResponse>,
-      &decode_as<message::SystemInfoRequest>,
-      &decode_as<message::SystemInfoResponse>,
     };
 
-    static_assert(kDecoders.size() == static_cast<std::uint8_t>(message::MessageType::kSystemInfoResponse) + 1);
+    static_assert(kDecoders.size() == static_cast<std::uint8_t>(message::MessageType::kDispatchResponse) + 1);
   }
 
   std::unique_ptr<message::Message> decode_message(const std::span<const std::uint8_t> body)
   {
     BufferReader reader{body};
     const auto type = reader.read_u8();
-    if (!message::message_type_from_byte(type).has_value() || type >= kDecoders.size())
+    if (type >= kDecoders.size())
     {
       throw std::invalid_argument{"decode_message: unknown message type"};
     }

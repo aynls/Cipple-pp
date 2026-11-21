@@ -1,39 +1,17 @@
 #!/usr/bin/env python3
-"""Faithful Python wire driver for Cipple++ comparison (no native client dependency).
+"""Measure Cipple++ deliveries over TCP using the protocol in doc/behavior.md.
 
-Protocol (see common/tcp/frame_codec, buffer_writer/reader, message/*, entity/*):
-  frame  = BE int32 body_len + body
-  body   = u8 type + 16B uuid + fields
-  string = BE u64 len + bytes ; bool = u8 (1/0) ; i32/i64 BE
-  types: 10 PUT (app,key,value) / 11 PUT_RESP (uuid+bool)
-         12 SUBSCRIBE (app,key,callback_str,i32 port[,i64 resume_after]) / 13 SUB_RESP
-         18 DISPATCH (sig_str + EntityMessage + [i64 seq + [EntityMessage base]]) / 19 DISPATCH_RESP
-  EntityMessage = 16B uuid + op_str + app + key + payload + i64 last_update + i32 server_id
-    op update -> value str ; delete -> nothing ; incremental -> 16B base_uuid + atomic str + value str
-  subscribe live (comparable online boundary): callback "" + i32 0, no resume_after.
-  durable overhead mode: append i64 resume_after (e.g. 0).
-
-Profiles (do NOT conflate): live (no cursor, no store) is the comparable
-online-delivery boundary; durable-cursor-wire-only (--resume-after without
---persist-sqlite) is wire arrival only and NOT persistence-equivalent;
-durable+persist-sqlite (--resume-after + --persist-sqlite DIR) does a real
-per-subscriber SQLite INSERT OR IGNORE + commit BEFORE t_recv/ACK and is the
-comparable post-persistence boundary (harness-side store, labelled as wire
-harness vs native Java client; live profile kept distinct).
-
-Observation boundary: t_publish immediately before sending PUT frame;
-t_recv when a subscriber thread finishes parsing a DISPATCH frame whose entity
-uuid matches a published request uuid (entity uuid == PUT request uuid server-side),
-BEFORE sending back DISPATCH_RESP. This mirrors Java's post-insert hook
-(after storage insert, before SyncResponse) at the corresponding online-delivery
-boundary. Durable live-vs-cursor overhead is measured separately via --resume-after.
+Measure publish time immediately before sending PutRequest. In ordinary wire
+mode, record delivery after parsing DispatchRequest. With --persist-sqlite,
+record delivery after the subscriber's SQLite transaction commits. In both
+modes, record delivery before sending DispatchResponse.
 """
 
 import argparse, json, os, random, socket, sqlite3, struct, sys, threading, time, uuid
 
-T_PUT_REQ, T_PUT_RESP = 10, 11
-T_SUB_REQ, T_SUB_RESP = 12, 13
-T_DISPATCH_REQ, T_DISPATCH_RESP = 18, 19
+T_PUT_REQ, T_PUT_RESP = 8, 9
+T_SUB_REQ, T_SUB_RESP = 10, 11
+T_DISPATCH_REQ, T_DISPATCH_RESP = 16, 17
 
 
 def u16():
@@ -101,17 +79,14 @@ def parse_entity(buf: bytes, pos: int):
 def parse_dispatch(body: bytes):
     assert body[0] == T_DISPATCH_REQ
     reply_uuid = body[1:17]
-    pos = 17
-    sig, pos = dec_str(body, pos)
-    ent, pos = parse_entity(body, pos)
-    seq = None
-    base = None
-    if pos < len(body):
-        (seq,) = struct.unpack_from(">q", body, pos)
-        pos += 8
-        if pos < len(body):
-            base, pos = parse_entity(body, pos)
-    return reply_uuid, sig, ent, seq, base
+    ent, pos = parse_entity(body, 17)
+    (sequence,) = struct.unpack_from(">q", body, pos)
+    pos += 8
+    if ent["op"] == "incremental_update":
+        _, pos = parse_entity(body, pos)
+    if sequence < 0 or pos != len(body):
+        raise ValueError("invalid dispatch sequence or trailing bytes")
+    return reply_uuid, ent, sequence
 
 
 def put_encode(rid: bytes, app: str, key: str, value: str) -> bytes:
@@ -130,10 +105,7 @@ def sub_encode(rid: bytes, app: str, key: str, resume_after=None) -> bytes:
     b += rid
     enc_str(b, app)
     enc_str(b, key)
-    enc_str(b, "")
-    b += struct.pack(">i", 0)
-    if resume_after is not None:
-        b += struct.pack(">q", resume_after)
+    b += struct.pack(">q", -1 if resume_after is None else resume_after)
     return bytes(b)
 
 
@@ -168,14 +140,6 @@ def main():
         "--out", required=True, help="summary json path (raw .jsonl sibling)"
     )
     ap.add_argument(
-        "--home",
-        choices=["shared", "roundrobin"],
-        default="roundrobin",
-        help="legacy placement flag; deterministic index-mod is always used: "
-        "sub i -> servers[i %% N], pub -> servers[0] (node 1). "
-        "'shared' pins all to servers[0] (identical to index-mod when N=1).",
-    )
-    ap.add_argument(
         "--resume-after",
         type=int,
         default=None,
@@ -186,7 +150,7 @@ def main():
         default=None,
         help="DIR for per-subscriber SQLite persistence (durable+persist profile). "
         "Each subscriber commits INSERT OR IGNORE on msg_uuid before t_recv/ACK. "
-        "Requires --resume-after for the comparable post-persistence boundary.",
+        "Use --resume-after to measure durable delivery.",
     )
     ap.add_argument("--timeout", type=int, default=30)
     a = ap.parse_args()
@@ -195,15 +159,9 @@ def main():
         h, p = s.rsplit(":", 1)
         servers.append((h, int(p)))
     t0 = a.t0 if a.t0 is not None else int(time.time() * 1000)
-    # Deterministic placement by node index (matches Java LoadDriver):
+    # Deterministic placement by node index.
     # sub i -> servers[i % N], pub -> servers[0] (node 1).
-    # 'shared' is the degenerate N=1 case (all on servers[0]); otherwise index-mod.
-    sub_homes = []
-    for i in range(a.subs):
-        if a.home == "shared":
-            sub_homes.append(servers[0])
-        else:
-            sub_homes.append(servers[i % len(servers)])
+    sub_homes = [servers[i % len(servers)] for i in range(a.subs)]
     pub_home = servers[0]
     placement = "index-mod: sub i -> servers[i % N], pub -> servers[0] (node 1)"
     persist_dir = a.persist_sqlite
@@ -265,13 +223,13 @@ def main():
                 if body[0] != T_DISPATCH_REQ:
                     continue
                 try:
-                    reply_uuid, sig, ent, seq, base = parse_dispatch(body)
+                    reply_uuid, ent, sequence = parse_dispatch(body)
                 except Exception as e:
                     with lock:
                         errors.append(f"sub{idx}: dispatch parse {e}")
                     continue
                 # Persist profile: real per-subscriber SQLite transaction BEFORE
-                # t_recv/ACK (mirrors Java post-insert hook). Insert-once on
+                # t_recv/ACK. Insert-once on
                 # msg_uuid; t_recv is after commit.
                 t_recv = int(time.time() * 1000)
                 persist_err = ""
@@ -327,7 +285,7 @@ def main():
                                     "msg_uuid": ent["uuid"].hex(),
                                     "t_recv": t_recv,
                                     "t_recv_ns": t_recv_ns,
-                                    "seq_server": seq,
+                                    "seq_server": sequence,
                                 }
         except Exception as e:
             with lock:
@@ -526,30 +484,26 @@ def main():
         observation = (
             "t_publish=before PUT frame send; t_recv=after per-subscriber SQLite "
             "INSERT OR IGNORE + commit, before/with ACK send "
-            "(durable cursor + harness-side persistence; wire harness, NOT native C++ client). "
-            "Comparable post-persistence boundary vs Java native insert. Bare cursor read "
-            "without sqlite is NOT equivalent and is labelled separately."
+            "(durable cursor and harness-side persistence)."
         )
     elif persist_dir is not None:
         engine = "cpp-wire-python+persist-sqlite(no-cursor)"
         observation = (
             "t_publish=before PUT frame send; t_recv=after per-subscriber SQLite "
             "INSERT OR IGNORE + commit, before/with ACK send "
-            "(harness-side persistence without durable cursor; wire harness, NOT native client)."
+            "(live delivery with harness-side persistence)."
         )
     elif a.resume_after is not None:
         engine = "cpp-wire-python(durable-cursor-wire-only)"
         observation = (
             "t_publish=before PUT frame send; t_recv=after DISPATCH parse, before/with ACK send "
-            "(durable cursor wire read only, NO store; NOT persistence-equivalent; "
-            "do NOT compare against Java native insert)."
+            "(durable cursor, measured at wire arrival)."
         )
     else:
         engine = "cpp-wire-python(live)"
         observation = (
             "t_publish=before PUT frame send; t_recv=after DISPATCH parse, before/with ACK send "
-            "(live, no cursor, no store; wire harness, NOT native C++ client). "
-            "Online-delivery boundary comparable to Java native online delivery."
+            "(live delivery, measured at wire arrival)."
         )
     summary = {
         "engine": engine,

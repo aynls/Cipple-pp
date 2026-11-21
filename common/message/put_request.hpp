@@ -11,7 +11,7 @@ namespace cipple::tcp
 
 namespace cipple::message
 {
-  // type(10) + uuid + applicationName + key + value
+  // Fields after the RPC UUID are applicationName + key + value.
   class PutRequest final : public Message
   {
   public:

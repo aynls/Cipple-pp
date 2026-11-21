@@ -6,14 +6,10 @@ add_library(cipple_common STATIC
         entity/operation_type.cpp
         entity/resolve.cpp
         hlc/hybrid_clock.cpp
-        message/ack_request.cpp
-        message/ack_response.cpp
         message/delete_request.cpp
         message/delete_response.cpp
         message/dispatch_request.cpp
         message/dispatch_response.cpp
-        message/get_client_list_request.cpp
-        message/get_client_list_response.cpp
         message/get_request.cpp
         message/get_response.cpp
         message/heartbeat_request.cpp
@@ -28,8 +24,6 @@ add_library(cipple_common STATIC
         message/subscribe_response.cpp
         message/sync_request.cpp
         message/sync_response.cpp
-        message/system_info_request.cpp
-        message/system_info_response.cpp
         message/unsubscribe_request.cpp
         message/unsubscribe_response.cpp
         storage/sqlite_storage.cpp
