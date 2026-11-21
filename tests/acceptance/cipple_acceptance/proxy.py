@@ -37,6 +37,7 @@ class DropPlan:
     rpc_ids: set[uuid.UUID] = field(default_factory=set)
     notes: list[FrameNote] = field(default_factory=list)
     lock: threading.Lock = field(default_factory=threading.Lock)
+    drop_first: bool = True
 
     def release(self) -> None:
         with self.lock:
@@ -59,13 +60,13 @@ class DropPlan:
             elif msg_type == SYNC_RESPONSE and len(body) >= 18 and rpc is not None:
                 result = body[17]
                 detail = f"result={result}"
-                if rpc in self.rpc_ids and result in (0, 1) and self.dropped == 0 and not self.refusing:
+                if self.drop_first and rpc in self.rpc_ids and result in (0, 1) and self.dropped == 0 and not self.refusing:
                     drop = True
             elif msg_type == ACK_REQUEST and len(body) >= 41:
                 message = uuid.UUID(bytes=body[17:33])
                 node_id = struct.unpack(">i", body[37:41])[0]
                 detail = f"message={message} node={node_id}"
-                if message == self.entity and self.dropped == 0 and not self.refusing:
+                if self.drop_first and message == self.entity and self.dropped == 0 and not self.refusing:
                     drop = True
             if drop:
                 self.dropped += 1
