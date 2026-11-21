@@ -6,7 +6,9 @@
 #include <boost/asio/steady_timer.hpp>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
+#include <cstddef>
 #include <deque>
 #include <exception>
 #include <iostream>
@@ -40,9 +42,14 @@ namespace cipple::server
     using message::MessageType;
     using Clock = std::chrono::steady_clock;
 
-    constexpr std::size_t kMaxInFlight = 64;    // 每条会话上未回执的 SyncRequest 上限
-    constexpr std::size_t kMaxStaged = 2048;    // 从 SQLite 暂存进内存的消息上限
-    constexpr std::int64_t kFetchBatch = 256;   // 单次 pending_for_node 拉取上限
+    constexpr std::size_t kMaxInFlight = 64;       // 每条会话上未回执的 SyncRequest 上限
+    constexpr std::size_t kMaxStaged = 2048;      // 已装载的待发、在途、退避和待确认记录上限
+    constexpr std::size_t kMaxDeferred = 64;      // 拒绝后退避的消息上限
+    constexpr std::size_t kMaxUndeliverable = 64;  // 记住的超帧消息上限
+    constexpr std::size_t kMaxAwaitingAck = 256;  // 在途与已收到回执的待落盘记录合计上限
+    constexpr std::size_t kAckBatch = 32;         // 一次 FULL 事务里合并的确认数
+    constexpr int kMaxPendingPages = 4;           // 一轮泵最多越过的索引页
+    constexpr std::int64_t kFetchBatch = 256;      // 单页 pending id 数
     constexpr auto kPollInterval = std::chrono::milliseconds{250};
     constexpr auto kHeartbeatInterval = std::chrono::seconds{2};
     constexpr unsigned kMaxMissedBeats = 3;
@@ -55,6 +62,14 @@ namespace cipple::server
       const auto shift = std::min(attempts, 4u);
       return std::min(kMinRetryDelay * (1u << shift), kMaxRetryDelay);
     }
+
+    struct AckBatch
+    {
+      enum class State { kWriting, kCommitted, kFailed };
+
+      std::vector<Uuid> ids;
+      std::atomic<State> state{State::kWriting};
+    };
 
   }
 
@@ -94,8 +109,13 @@ namespace cipple::server
     std::deque<Outbound> backlog;                   // 立即可发，按 pending 序
     std::deque<Deferred> deferred;                  // 被拒后按退避时间挂起
     std::unordered_map<Uuid, InFlight> in_flight;   // 已发出、等待 SyncResponse
-    std::unordered_set<Uuid> staged;                // backlog ∪ deferred ∪ in_flight
-    std::unordered_set<Uuid> undeliverable;         // 超帧长：永久留在 pending，不再装载
+    std::unordered_set<Uuid> staged;                // backlog ∪ deferred ∪ in_flight ∪ pending_acks
+    std::unordered_set<Uuid> undeliverable;         // 超帧：有界记忆，超出后靠游标跳过
+    std::optional<storage::PendingCursor> scan_cursor;
+    bool scan_exhausted = false;
+    std::deque<Uuid> pending_acks;
+    std::shared_ptr<AckBatch> ack_batch;
+    Clock::time_point ack_retry_at = Clock::time_point::min();
     std::optional<Clock::time_point> deferred_wake;
     bool write_blocked = false;
     bool pump_posted = false;
@@ -176,6 +196,7 @@ namespace cipple::server
   {
     for (const auto& peer : _peers)
     {
+      peer->scan_exhausted = false;
       request_pump(*peer);
     }
   }
@@ -264,9 +285,14 @@ namespace cipple::server
     }
     try
     {
-      // 只在待发队列掏空时才查存储：高频写入路径上每 kFetchBatch 条至多一次查询。
-      if (peer.backlog.empty() && peer.staged.size() < kMaxStaged
-          && peer.in_flight.size() < kMaxInFlight)
+      const bool committed = settle_acks(peer);
+      if (committed || peer.pending_acks.size() >= kAckBatch)
+      {
+        flush_acks(peer);
+      }
+      if (!peer.scan_exhausted && peer.session && peer.session->is_open()
+          && peer.in_flight.size() < kMaxInFlight
+          && peer.pending_acks.size() + peer.in_flight.size() < kMaxAwaitingAck)
       {
         stage_pending(peer);
       }
@@ -280,33 +306,154 @@ namespace cipple::server
     rearm_retry_timer(peer);
   }
 
+  std::size_t Replication::parked_retries(const Peer& peer) noexcept
+  {
+    std::size_t count = peer.deferred.size();
+    for (const auto& outbound : peer.backlog)
+    {
+      if (outbound.attempts > 0)
+      {
+        ++count;
+      }
+    }
+    return count;
+  }
+
   void Replication::stage_pending(Peer& peer)
   {
-    const auto room = static_cast<std::int64_t>(kMaxStaged - peer.staged.size());
-    for (const auto& uuid : _reads.pending_ids_for_node(peer.id, std::min<std::int64_t>(kFetchBatch, room)))
+    const auto occupied = peer.staged.size();
+    if (occupied >= kMaxStaged)
     {
-      if (peer.staged.contains(uuid) || peer.undeliverable.contains(uuid))
+      return;
+    }
+    const auto need = std::min(kMaxStaged - occupied, static_cast<std::size_t>(kFetchBatch));
+    std::size_t admitted = 0;
+    for (int page = 0; page < kMaxPendingPages && admitted < need; ++page)
+    {
+      const auto rows = _reads.pending_ids_after(peer.id, peer.scan_cursor, kFetchBatch);
+      if (rows.empty())
       {
-        continue;
+        peer.scan_cursor.reset();
+        peer.scan_exhausted = true;
+        break;
       }
-      peer.staged.insert(uuid);
-      try
+      std::optional<storage::PendingCursor> advanced;
+      bool filled = false;
+      for (const auto& row : rows)
       {
-        peer.backlog.push_back(Peer::Outbound{uuid, 0});
+        const storage::PendingCursor position{row.last_update, row.last_update_server_id, row.uuid};
+        if (peer.staged.contains(row.uuid) || peer.undeliverable.contains(row.uuid))
+        {
+          advanced = position;
+          continue;
+        }
+        if (admitted >= need)
+        {
+          filled = true;
+          break;
+        }
+        peer.staged.insert(row.uuid);
+        try
+        {
+          peer.backlog.push_back(Peer::Outbound{row.uuid, 0});
+        }
+        catch (...)
+        {
+          // 保持 staged ⊆ 各队列：入队失败就撤销标记，让下轮拉取重新装载。
+          peer.staged.erase(row.uuid);
+          throw;
+        }
+        advanced = position;
+        ++admitted;
       }
-      catch (...)
+      if (advanced)
       {
-        // 保持 staged ⊆ 各队列：入队失败就撤销标记，让下轮拉取重新装载。
-        peer.staged.erase(uuid);
-        throw;
+        peer.scan_cursor = advanced;
       }
+      if (filled)
+      {
+        break;
+      }
+      if (rows.size() < static_cast<std::size_t>(kFetchBatch))
+      {
+        peer.scan_cursor.reset();
+        peer.scan_exhausted = true;
+        break;
+      }
+    }
+  }
+
+  bool Replication::settle_acks(Peer& peer) noexcept
+  {
+    if (!peer.ack_batch)
+    {
+      return false;
+    }
+    const auto state = peer.ack_batch->state.load(std::memory_order_acquire);
+    if (state == AckBatch::State::kWriting)
+    {
+      return false;
+    }
+    if (state == AckBatch::State::kCommitted)
+    {
+      for (const auto& id : peer.ack_batch->ids)
+      {
+        peer.staged.erase(id);
+        peer.pending_acks.pop_front();
+      }
+    }
+    else
+    {
+      peer.ack_retry_at = Clock::now() + kPollInterval;
+    }
+    peer.ack_batch.reset();
+    return state == AckBatch::State::kCommitted;
+  }
+
+  void Replication::flush_acks(Peer& peer)
+  {
+    if (_stopped || peer.ack_batch || peer.pending_acks.empty() || Clock::now() < peer.ack_retry_at)
+    {
+      return;
+    }
+    // Keep the batch's prefix in the queue until the write thread records its commit.
+    auto batch = std::make_shared<AckBatch>();
+    const auto size = std::min(kAckBatch, peer.pending_acks.size());
+    batch->ids.assign(peer.pending_acks.begin(), peer.pending_acks.begin() + static_cast<std::ptrdiff_t>(size));
+    if (_writer.submit_ack(_context,
+      [batch, node_id = peer.id](storage::Storage& storage) {
+        try
+        {
+          storage.mark_acked_batch(node_id, batch->ids);
+        }
+        catch (...)
+        {
+          batch->state.store(AckBatch::State::kFailed, std::memory_order_release);
+          throw;
+        }
+        batch->state.store(AckBatch::State::kCommitted, std::memory_order_release);
+      },
+      [weak = weak_from_this(), &peer] {
+        if (const auto self = weak.lock())
+        {
+          self->pump(peer);
+        }
+      }))
+    {
+      peer.ack_batch = std::move(batch);
+    }
+    else
+    {
+      peer.ack_retry_at = Clock::now() + kPollInterval;
     }
   }
 
   void Replication::drain(Peer& peer)
   {
     while (peer.session && peer.session->is_open() && !peer.write_blocked
-           && peer.in_flight.size() < kMaxInFlight && !peer.backlog.empty())
+           && peer.pending_acks.size() + peer.in_flight.size() < kMaxAwaitingAck
+           && peer.in_flight.size() < kMaxInFlight
+           && !peer.backlog.empty())
     {
       auto outbound = std::move(peer.backlog.front());
       peer.backlog.pop_front();
@@ -349,11 +496,14 @@ namespace cipple::server
         }
         if (error == asio::error::message_size)
         {
-          // 永远装不进帧：跳过装载、保持 pending，不再纠缠这条消息。
+          // 超帧集合有上限。记不住时不占 staged，游标已经越过它，下一圈才会再试一次。
           peer.staged.erase(message_uuid);
-          peer.undeliverable.insert(message_uuid);
-          std::cerr << "Replication: peer " << peer.id << ": message " << message_uuid.to_string()
-                    << " exceeds the frame limit and stays pending\n";
+          if (peer.undeliverable.size() < kMaxUndeliverable)
+          {
+            peer.undeliverable.insert(message_uuid);
+            std::cerr << "Replication: peer " << peer.id << ": message " << message_uuid.to_string()
+                      << " exceeds the frame limit and stays pending\n";
+          }
           continue;
         }
         peer.backlog.push_front(std::move(outbound));
@@ -418,17 +568,25 @@ namespace cipple::server
         ++it;
       }
     }
-    // Increase the deadline for the next attempt on a lost reply.
-    for (auto it = expired.rbegin(); it != expired.rend(); ++it)
+    // 超时不再插回队首。能留下的重试有上限，超出的卸下装载资格，把发送容量让给还没试过的版本。
+    for (auto& outbound : expired)
     {
-      ++it->attempts;
+      ++outbound.attempts;
+      const auto id = outbound.message_uuid;
       try
       {
-        peer.backlog.push_front(std::move(*it));
+        if (parked_retries(peer) < kMaxDeferred)
+        {
+          peer.backlog.push_back(std::move(outbound));
+        }
+        else
+        {
+          peer.staged.erase(id);
+        }
       }
       catch (...)
       {
-        peer.staged.erase(it->message_uuid);
+        peer.staged.erase(id);
       }
     }
   }
@@ -494,6 +652,7 @@ namespace cipple::server
   void Replication::on_connected(Peer& peer, std::shared_ptr<tcp::Session> session) noexcept
   {
     peer.session = std::move(session);
+    peer.scan_exhausted = false;
     peer.write_blocked = false;
     peer.awaiting_pong = false;
     peer.missed_beats = 0;
@@ -518,15 +677,23 @@ namespace cipple::server
         rescued.push_back(std::move(entry.outbound));
       }
       peer.in_flight.clear();
-      for (auto it = rescued.rbegin(); it != rescued.rend(); ++it)
+      for (auto& outbound : rescued)
       {
+        const auto id = outbound.message_uuid;
         try
         {
-          peer.backlog.push_front(std::move(*it));
+          if (outbound.attempts == 0 || parked_retries(peer) < kMaxDeferred)
+          {
+            peer.backlog.push_back(std::move(outbound));
+          }
+          else
+          {
+            peer.staged.erase(id);
+          }
         }
         catch (...)
         {
-          peer.staged.erase(it->message_uuid);
+          peer.staged.erase(id);
         }
       }
     }
@@ -584,33 +751,32 @@ namespace cipple::server
     {
       if (response.result() == message::Result::kRejected)
       {
-        // kRejected 永不标记 ack：递增退避后挂起，稍后重发。
+        // kRejected 永不标记 ack。退避集合有上限；放不下就卸下装载资格，游标继续往后。
         auto outbound = attempt->second.outbound;
         ++outbound.attempts;
+        const auto entity_id = outbound.message_uuid;
         const auto not_before = Clock::now() + retry_delay(outbound.attempts);
-        peer.deferred.push_back({std::move(outbound), not_before});
-        peer.in_flight.erase(attempt);
-        if (!peer.deferred_wake || not_before < *peer.deferred_wake)
+        if (peer.deferred.size() < kMaxDeferred)
         {
-          peer.deferred_wake = not_before;
+          peer.deferred.push_back({std::move(outbound), not_before});
+          if (!peer.deferred_wake || not_before < *peer.deferred_wake)
+          {
+            peer.deferred_wake = not_before;
+          }
         }
+        else
+        {
+          peer.staged.erase(entity_id);
+        }
+        peer.in_flight.erase(attempt);
         ++peer.rejections_since_report;
       }
       else
       {
-        // kSuccess / kDuplicated = 对端已持久化：mark_acked 提交到写线程；
-        // 失败时保持 staged，随后按超时重发。
-        const auto entity_id = attempt->second.outbound.message_uuid;
-        const auto node_id = peer.id;
-        const auto marked = _writer.submit(_context,
-          [entity_id, node_id](storage::Storage& storage) { storage.mark_acked(entity_id, node_id); });
-        if (!marked)
-        {
-          return;
-        }
-        peer.failure_reported = false;
-        peer.staged.erase(entity_id);
+        // 成功或重复回执释放发送窗口，本机提交 ACK 后才释放装载资格。
+        peer.pending_acks.push_back(attempt->second.outbound.message_uuid);
         peer.in_flight.erase(attempt);
+        peer.failure_reported = false;
       }
     }
     catch (const std::exception& error)
@@ -655,8 +821,11 @@ namespace cipple::server
     {
       peer.rejection_reported = false;
     }
+    peer.scan_exhausted = false;
     try
     {
+      settle_acks(peer);
+      flush_acks(peer);
       expire_due(peer);
     }
     catch (const std::exception& error)

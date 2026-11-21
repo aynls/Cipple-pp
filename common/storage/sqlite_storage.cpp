@@ -2,7 +2,9 @@
 
 #include <sqlite3.h>
 
+#include <limits>
 #include <stdexcept>
+#include <string>
 #include <unordered_set>
 #include <utility>
 
@@ -48,13 +50,14 @@ namespace cipple::storage
         message_uuid BLOB NOT NULL REFERENCES message(uuid),
         node_id INTEGER NOT NULL,
         acknowledged INTEGER NOT NULL DEFAULT 0 CHECK (acknowledged IN (0, 1)),
+        last_update INTEGER NOT NULL DEFAULT 0,
+        last_update_server_id INTEGER NOT NULL DEFAULT 0,
         PRIMARY KEY (message_uuid, node_id)
       ) WITHOUT ROWID;
 
       CREATE INDEX IF NOT EXISTS message_history
         ON message(application_name, key, last_update, last_update_server_id, uuid)
         WHERE retained = 1;
-      CREATE INDEX IF NOT EXISTS ack_pending ON ack(node_id, message_uuid) WHERE acknowledged = 0;
 
       CREATE TABLE IF NOT EXISTS delivery_log (
         sequence INTEGER PRIMARY KEY,
@@ -65,11 +68,27 @@ namespace cipple::storage
       CREATE INDEX IF NOT EXISTS delivery_log_topic ON delivery_log(application_name, key, sequence);
     )sql";
 
-    constexpr std::string_view kPendingForNode = R"sql(
-      JOIN ack AS a ON a.message_uuid = m.uuid
-      WHERE a.node_id = ?1 AND a.acknowledged = 0 AND m.retained = 1
-      ORDER BY m.last_update, m.last_update_server_id, m.uuid
+    constexpr char kAckByVersion[] = R"sql(
+      CREATE INDEX IF NOT EXISTS ack_by_version
+        ON ack(node_id, last_update, last_update_server_id, message_uuid)
+        WHERE acknowledged = 0
+    )sql";
+
+    constexpr char kPendingIds[] = R"sql(
+      SELECT message_uuid, last_update, last_update_server_id
+      FROM ack
+      WHERE node_id = ?1 AND acknowledged = 0
+      ORDER BY last_update, last_update_server_id, message_uuid
       LIMIT ?2
+    )sql";
+
+    constexpr char kPendingIdsAfter[] = R"sql(
+      SELECT message_uuid, last_update, last_update_server_id
+      FROM ack
+      WHERE node_id = ?1 AND acknowledged = 0
+        AND (last_update, last_update_server_id, message_uuid) > (?2, ?3, ?4)
+      ORDER BY last_update, last_update_server_id, message_uuid
+      LIMIT ?5
     )sql";
 
     [[noreturn]] void throw_sqlite(sqlite3* db, const int error, const char* operation)
@@ -401,6 +420,65 @@ namespace cipple::storage
       }
       return messages;
     }
+
+    bool table_has_column(sqlite3* db, const char* table, const char* column)
+    {
+      const auto sql = std::string{"PRAGMA table_info("} + table + ")";
+      const Statement info{db, sql.c_str()};
+      while (info.next())
+      {
+        if (info.bytes(1) == column)
+        {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    bool index_exists(sqlite3* db, const char* name)
+    {
+      const Statement query{db, "SELECT 1 FROM sqlite_master WHERE type = 'index' AND name = ?1"};
+      query.bind_text(1, name);
+      return query.next();
+    }
+
+    // Runs only while user_version is still 0 or 1. Version 2 opens do not create or drop indexes.
+    void migrate_ack_order(sqlite3* db, const int schema_version)
+    {
+      if (schema_version == 2)
+      {
+        return;
+      }
+      if (schema_version != 0 && schema_version != 1)
+      {
+        throw std::runtime_error{"unsupported storage schema version"};
+      }
+      if (!table_has_column(db, "ack", "last_update"))
+      {
+        execute_sql(db, "ALTER TABLE ack ADD COLUMN last_update INTEGER NOT NULL DEFAULT 0", "add ack version");
+        execute_sql(db, "ALTER TABLE ack ADD COLUMN last_update_server_id INTEGER NOT NULL DEFAULT 0",
+                    "add ack server id");
+      }
+      execute_sql(db, R"sql(
+        UPDATE ack SET
+          last_update = (SELECT last_update FROM message WHERE uuid = ack.message_uuid),
+          last_update_server_id = (SELECT last_update_server_id FROM message WHERE uuid = ack.message_uuid)
+      )sql", "backfill ack version order");
+      if (schema_version == 0)
+      {
+        execute_sql(db, R"sql(
+          INSERT INTO delivery_log(message_uuid, application_name, key)
+            SELECT uuid, application_name, key FROM message WHERE retained = 1
+            ORDER BY last_update, last_update_server_id, uuid
+        )sql", "initialize replay history from existing messages");
+      }
+      execute_sql(db, kAckByVersion, "create ack version index");
+      if (index_exists(db, "ack_pending"))
+      {
+        execute_sql(db, "DROP INDEX ack_pending", "drop unordered pending index");
+      }
+      execute_sql(db, "PRAGMA user_version = 2", "set storage schema version");
+    }
   }
 
   SqliteStorage::SqliteStorage(const std::filesystem::path& path)
@@ -438,19 +516,11 @@ namespace cipple::storage
         schema_version = static_cast<int>(version.integer(0));
       }
     }
-    if (schema_version == 0)
-    {
-      execute_sql(db, R"sql(
-        INSERT INTO delivery_log(message_uuid, application_name, key)
-          SELECT uuid, application_name, key FROM message WHERE retained = 1
-          ORDER BY last_update, last_update_server_id, uuid;
-        PRAGMA user_version = 1;
-      )sql", "initialize replay history from existing messages");
-    }
-    else if (schema_version != 1)
+    if (schema_version > 2)
     {
       throw std::runtime_error{"unsupported storage schema version"};
     }
+    migrate_ack_order(db, schema_version);
     transaction.commit();
   }
 
@@ -497,10 +567,13 @@ namespace cipple::storage
     if (!target_node_ids.empty())
     {
       const Statement insert_ack{db, R"sql(
-        INSERT INTO ack(message_uuid, node_id) VALUES (?1, ?2)
+        INSERT INTO ack(message_uuid, node_id, last_update, last_update_server_id)
+        VALUES (?1, ?2, ?3, ?4)
         ON CONFLICT(message_uuid, node_id) DO NOTHING
       )sql"};
       insert_ack.bind(1, message.uuid());
+      insert_ack.bind(3, message.last_update());
+      insert_ack.bind(4, message.last_update_server_id());
       for (const auto node_id : target_node_ids)
       {
         insert_ack.bind(2, node_id);
@@ -599,7 +672,18 @@ namespace cipple::storage
   std::vector<EntityMessage> SqliteStorage::pending_for_node(const std::int32_t node_id, const std::int64_t limit) const
   {
     const std::lock_guard lock{_mutex};
-    const auto sql = select_messages(kPendingForNode);
+    // The inner page stops on the version index; the join only materializes that page.
+    const auto sql = select_messages(R"sql(
+      JOIN (
+        SELECT message_uuid, last_update, last_update_server_id
+        FROM ack
+        WHERE node_id = ?1 AND acknowledged = 0
+        ORDER BY last_update, last_update_server_id, message_uuid
+        LIMIT ?2
+      ) AS a ON a.message_uuid = m.uuid
+      WHERE m.retained = 1
+      ORDER BY a.last_update, a.last_update_server_id, a.message_uuid
+    )sql");
     const Statement query{_db.get(), sql.c_str()};
     query.bind(1, node_id);
     query.bind(2, limit == 0 ? -1 : limit);
@@ -608,18 +692,74 @@ namespace cipple::storage
 
   std::vector<Uuid> SqliteStorage::pending_ids_for_node(const std::int32_t node_id, const std::int64_t limit) const
   {
-    const std::lock_guard lock{_mutex};
-    std::string sql{"SELECT m.uuid FROM message AS m "};
-    sql.append(kPendingForNode);
-    const Statement query{_db.get(), sql.c_str()};
-    query.bind(1, node_id);
-    query.bind(2, limit);
+    const auto page = pending_ids_after(node_id, std::nullopt, limit < 0 ? std::numeric_limits<std::int64_t>::max() : limit);
     std::vector<Uuid> result;
-    while (query.next())
+    result.reserve(page.size());
+    for (const auto& row : page)
     {
-      result.push_back(query.uuid(0));
+      result.push_back(row.uuid);
     }
     return result;
+  }
+
+  std::vector<PendingId> SqliteStorage::pending_ids_after(const std::int32_t node_id,
+                                                         const std::optional<PendingCursor>& after,
+                                                         const std::int64_t limit) const
+  {
+    if (limit <= 0)
+    {
+      return {};
+    }
+    const std::lock_guard lock{_mutex};
+    const char* const sql = after ? static_cast<const char*>(kPendingIdsAfter) : static_cast<const char*>(kPendingIds);
+    const Statement query{_db.get(), sql};
+    query.bind(1, node_id);
+    if (after)
+    {
+      query.bind(2, after->last_update);
+      query.bind(3, after->last_update_server_id);
+      query.bind(4, after->uuid);
+      query.bind(5, limit);
+    }
+    else
+    {
+      query.bind(2, limit);
+    }
+    std::vector<PendingId> result;
+    while (query.next())
+    {
+      result.push_back(PendingId{query.uuid(0), query.integer(1), static_cast<std::int32_t>(query.integer(2))});
+    }
+    return result;
+  }
+
+  std::size_t SqliteStorage::mark_acked_batch(const std::int32_t node_id, const std::span<const Uuid> message_uuids)
+  {
+    if (message_uuids.empty())
+    {
+      return 0;
+    }
+    const std::lock_guard lock{_mutex};
+    auto* db = _db.get();
+    const Transaction transaction{db};
+    const Statement update{db, R"sql(
+      UPDATE ack SET acknowledged = 1
+      WHERE message_uuid = ?1 AND node_id = ?2 AND acknowledged = 0
+    )sql"};
+    update.bind(2, node_id);
+    std::size_t changed = 0;
+    for (const auto& message_uuid : message_uuids)
+    {
+      update.bind(1, message_uuid);
+      update.execute();
+      if (sqlite3_changes(db) != 0)
+      {
+        ++changed;
+      }
+      update.reset();
+    }
+    transaction.commit();
+    return changed;
   }
 
   std::vector<JournalEntry> SqliteStorage::journal_after(const std::string_view application_name,

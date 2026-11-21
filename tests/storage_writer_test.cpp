@@ -71,6 +71,15 @@ namespace
     {
       return {};
     }
+    std::vector<cipple::storage::PendingId> pending_ids_after(std::int32_t,
+        const std::optional<cipple::storage::PendingCursor>&, std::int64_t) const override
+    {
+      return {};
+    }
+    std::size_t mark_acked_batch(std::int32_t, std::span<const Uuid> ids) override
+    {
+      return ids.size();
+    }
     std::vector<JournalEntry> journal_after(std::string_view, std::string_view, std::int64_t,
                                           std::int64_t) const override
     {

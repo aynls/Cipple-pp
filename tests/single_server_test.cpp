@@ -116,6 +116,17 @@ namespace
       return _store.pending_ids_for_node(node, limit);
     }
 
+    std::vector<storage::PendingId> pending_ids_after(const std::int32_t node,
+        const std::optional<storage::PendingCursor>& after, const std::int64_t limit) const override
+    {
+      return _store.pending_ids_after(node, after, limit);
+    }
+
+    std::size_t mark_acked_batch(const std::int32_t node, const std::span<const Uuid> ids) override
+    {
+      return _store.mark_acked_batch(node, ids);
+    }
+
     std::vector<storage::JournalEntry> journal_after(const std::string_view app, const std::string_view key,
                                                       const std::int64_t after, const std::int64_t limit) const override
     {
