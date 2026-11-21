@@ -1,6 +1,7 @@
 #include "server.hpp"
 
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/post.hpp>
 #include <boost/system/system_error.hpp>
 
 #include <algorithm>
@@ -8,14 +9,14 @@
 #include <iostream>
 #include <optional>
 #include <stdexcept>
-#include <string_view>
 #include <tuple>
+#include <utility>
 #include <vector>
 
 #include "entity/resolve.hpp"
+#include "hlc/hybrid_clock.hpp"
 #include "message/delete_request.hpp"
 #include "message/delete_response.hpp"
-#include "message/dispatch_request.hpp"
 #include "message/dispatch_response.hpp"
 #include "message/get_request.hpp"
 #include "message/get_response.hpp"
@@ -32,6 +33,7 @@
 #include "message/unsubscribe_response.hpp"
 #include "storage/storage.hpp"
 #include "storage/storage_writer.hpp"
+#include "subscriptions.hpp"
 #include "tcp/frame_codec.hpp"
 #include "tcp/session.hpp"
 
@@ -42,30 +44,23 @@ namespace cipple::server
     namespace asio = boost::asio;
     using entity::EntityMessage;
     using message::MessageType;
-    using Clock = std::chrono::steady_clock;
-    constexpr auto kDeliveryTimeout = std::chrono::seconds{2};
     constexpr auto kDeliveryCheckInterval = std::chrono::milliseconds{250};
 
-    bool send(tcp::Session& session, const message::Message& message)
+    bool send(tcp::Session& session, const message::Message& message) noexcept
     {
-      if (session.async_send(message))
+      try
       {
-        session.close();
-        return false;
+        if (!session.async_send(message))
+        {
+          return true;
+        }
       }
-      return true;
-    }
-
-    // Fan-out path: the frame is encoded once by the caller and shared by
-    // every recipient's write queue.
-    bool send_frame(tcp::Session& session, const tcp::EncodedFrame& frame)
-    {
-      if (!frame || session.async_send(frame))
+      catch (const std::exception& error)
       {
-        session.close();
-        return false;
+        std::cerr << "Response failed: " << error.what() << '\n';
       }
-      return true;
+      session.close();
+      return false;
     }
 
     std::optional<EntityMessage> lookup_base(storage::Storage& store, const EntityMessage& message)
@@ -122,6 +117,27 @@ namespace cipple::server
     }
   }
 
+  // Writer tasks fill these objects before posting their I/O completions.
+  struct Server::WriteOutcome
+  {
+    ConfigKey key;
+    std::optional<EntityMessage> version;
+    std::optional<EntityMessage> base;
+    bool success = false;
+    bool is_current = false;
+    std::optional<std::string> error;
+  };
+
+  struct Server::SyncOutcome
+  {
+    ConfigKey key;
+    EntityMessage version;
+    std::optional<EntityMessage> base;
+    message::Result result = message::Result::kRejected;
+    bool is_current = false;
+    std::optional<std::string> error;
+  };
+
   std::shared_ptr<Server> Server::start(asio::io_context& context, const asio::ip::tcp::endpoint& endpoint,
                                         std::unique_ptr<storage::StorageWriter> storage, const std::int32_t node_id)
   {
@@ -150,12 +166,13 @@ namespace cipple::server
                  std::unique_ptr<storage::StorageWriter> storage, const ServerOptions& options)
     : _context{context}
       , _storage{std::move(storage)}
+      , _subscriptions{std::make_unique<Subscriptions>(_storage->reader())}
       , _acceptor{context, endpoint, false}
       , _delivery_timer{context}
       , _local_endpoint{_acceptor.local_endpoint()}
       , _node_id{options.node_id}
       , _relay_peer_updates{options.relay_peer_updates}
-      , _clock{options.clock_offset_ms}
+      , _clock{std::make_shared<hlc::HybridClock>(options.clock_offset_ms)}
   {
     if (!options.peers.empty() && _node_id <= 0)
     {
@@ -170,7 +187,7 @@ namespace cipple::server
       }
       _peer_ids.push_back(member.id);
     }
-    _clock.observe(_storage->reader().version_watermark());
+    _clock->observe(_storage->reader().version_watermark());
   }
 
   Server::~Server() noexcept
@@ -201,11 +218,7 @@ namespace cipple::server
     }
     // Drain queued commits so completion posts can no longer be generated.
     _storage->stop();
-    while (!_connections.empty())
-    {
-      auto connection = _connections.extract(_connections.begin());
-      connection.mapped().session->close();
-    }
+    _subscriptions->stop();
   }
 
   void Server::accept_next()
@@ -239,42 +252,44 @@ namespace cipple::server
       [weak, id](boost::system::error_code) {
         if (const auto self = weak.lock())
         {
-          self->_connections.erase(id);
+          self->_subscriptions->detach(id);
         }
       });
-    _connections.emplace(id, Connection{std::move(session), {}});
+    _subscriptions->attach(id, std::move(session));
   }
 
   template<typename Response, typename Request>
   void Server::write(tcp::Session& session, const Request& request, EntityMessage::Payload payload)
   {
     const auto request_id = request.uuid();
-    // The HLC stamp is taken on the I/O thread, so commit order on the writer
-    // thread follows request order.
-    EntityMessage version{request_id, request.application_name(), request.key(),
-                          _clock.tick(), _node_id, std::move(payload)};
-    const auto outcome = std::make_shared<WriteOutcome>();
-    const auto peers = _peer_ids;
+    const auto outcome = std::make_shared<WriteOutcome>(WriteOutcome{
+      .key = {request.application_name(), request.key()},
+    });
     const bool accepted = _storage->submit(_context,
-      [version, peers, outcome](storage::Storage& store) {
+      [clock = _clock, node_id = _node_id, peers = _peer_ids, request_id,
+       payload = std::move(payload), outcome](storage::Storage& store) mutable {
         try
         {
           // An accepted retry must have the same operation and payload.
-          const auto previous = store.find_message(version.uuid());
+          const auto previous = store.find_message(request_id);
           if (previous)
           {
-            outcome->success = previous->application_name() == version.application_name()
-                            && previous->key() == version.key() && previous->payload() == version.payload();
+            outcome->success = previous->application_name() == outcome->key.first
+                            && previous->key() == outcome->key.second && previous->payload() == payload;
             return;
           }
           if (previous.error() != storage::MessageUnavailable::kMissing)
           {
             return;
           }
-          if (fits_read_response(version, lookup_base(store, version)))
+          auto& version = outcome->version.emplace(request_id, outcome->key.first, outcome->key.second,
+                                                   clock->tick(), node_id, std::move(payload));
+          outcome->base = lookup_base(store, version);
+          if (fits_read_response(version, outcome->base))
           {
-            outcome->inserted = outcome->success =
-                store.append(version, peers) == storage::AppendResult::kInserted;
+            const auto receipt = store.append_with_outcome(version, peers);
+            outcome->success = receipt.result == storage::AppendResult::kInserted;
+            outcome->is_current = receipt.is_current;
           }
         }
         catch (const std::exception& error)
@@ -282,10 +297,10 @@ namespace cipple::server
           outcome->error = error.what();
         }
       },
-      [weak = weak_from_this(), session = session.shared_from_this(), request_id, version, outcome]() mutable {
-        if (const auto self = weak.lock())
+      [weak = weak_from_this(), session = session.shared_from_this(), request_id, outcome] {
+        if (const auto self = weak.lock(); self && self->_acceptor.is_open())
         {
-          self->finish_write<Response>(*session, request_id, version, *outcome);
+          self->finish_write<Response>(*session, request_id, *outcome);
         }
       });
     if (!accepted)
@@ -295,27 +310,30 @@ namespace cipple::server
   }
 
   template<typename Response>
-  void Server::finish_write(tcp::Session& session, const Uuid& request_id,
-                            const EntityMessage& version, const WriteOutcome& outcome)
+  void Server::finish_write(tcp::Session& session, const Uuid& request_id, WriteOutcome& outcome)
   {
     if (outcome.error)
     {
       std::cerr << "Write failed: " << *outcome.error << '\n';
     }
     send(session, Response{request_id, outcome.success});
-    if (outcome.inserted)
+    if (!outcome.success)
+    {
+      return;
+    }
+    if (outcome.version)
     {
       if (_replication)
       {
         _replication->notify();
       }
-      publish(version, true);
+      if (outcome.is_current)
+      {
+        _subscriptions->publish_live(outcome.key, std::move(*outcome.version), std::move(outcome.base));
+      }
     }
-  }
-
-  std::optional<EntityMessage> Server::find_base(const EntityMessage& message) const
-  {
-    return lookup_base(_storage->reader(), message);
+    _subscriptions->wake(outcome.key);
+    schedule_replay();
   }
 
   void Server::read(tcp::Session& session, const message::GetRequest& request) const
@@ -331,7 +349,7 @@ namespace cipple::server
       }
       else if (const auto* increment = std::get_if<EntityMessage::IncrementalUpdate>(&latest->payload()))
       {
-        auto base = find_base(*latest);
+        auto base = lookup_base(_storage->reader(), *latest);
         const auto* full = base ? std::get_if<EntityMessage::Update>(&base->payload()) : nullptr;
         if (!full || base->application_name() != request.application_name() || base->key() != request.key())
         {
@@ -373,13 +391,18 @@ namespace cipple::server
       }
     }
 
-    const auto outcome = std::make_shared<SyncOutcome>();
+    const auto outcome = std::make_shared<SyncOutcome>(SyncOutcome{
+      .key = {version.application_name(), version.key()},
+      .version = version,
+      .base = request.base(),
+    });
     const bool notify = !targets.empty();
     const bool accepted = _storage->submit(_context,
-      [version, supplied = request.base(), targets = std::move(targets),
-       outcome](storage::Storage& store) mutable {
+      [clock = _clock, targets = std::move(targets), outcome](storage::Storage& store) {
         try
         {
+          const auto& version = outcome->version;
+          const bool supplied = outcome->base.has_value();
           const auto existing = store.find_message(version.uuid());
           if (existing || existing.error() == storage::MessageUnavailable::kRecycled)
           {
@@ -387,41 +410,41 @@ namespace cipple::server
             if (identical && supplied)
             {
               const auto stored_base = lookup_base(store, version);
-              identical = stored_base == supplied;
+              identical = stored_base == outcome->base;
             }
             outcome->result = identical ? Result::kDuplicated : Result::kRejected;
             return;
           }
 
-          const auto base = supplied ? supplied : lookup_base(store, version);
+          if (!supplied)
+          {
+            outcome->base = lookup_base(store, version);
+          }
           if ((supplied && version.operation_type() != entity::OperationType::kIncrementalUpdate)
-              || !fits_read_response(version, base))
+              || !fits_read_response(version, outcome->base))
           {
-            outcome->result = Result::kRejected;
             return;
           }
-          outcome->new_base = supplied && store.journal_sequence(supplied->uuid()) == 0;
-          if (store.append(version, targets, supplied ? &*supplied : nullptr)
-              != storage::AppendResult::kInserted)
+          auto next_clock = *clock;
+          next_clock.observe(version.last_update());
+          const auto receipt = store.append_with_outcome(version, targets, supplied ? &*outcome->base : nullptr);
+          if (receipt.result != storage::AppendResult::kInserted)
           {
-            outcome->result = Result::kRejected;
             return;
           }
+          *clock = next_clock;
+          outcome->is_current = receipt.is_current;
           outcome->result = Result::kSuccess;
-          const auto latest = store.latest(version.application_name(), version.key());
-          outcome->is_current = latest && latest->uuid() == version.uuid();
         }
         catch (const std::exception& error)
         {
-          outcome->result = Result::kRejected;
           outcome->error = error.what();
         }
       },
-      [weak = weak_from_this(), session = session.shared_from_this(), request_id = request.uuid(),
-       version, supplied = request.base(), notify, outcome]() mutable {
-        if (const auto self = weak.lock())
+      [weak = weak_from_this(), session = session.shared_from_this(), request_id = request.uuid(), notify, outcome] {
+        if (const auto self = weak.lock(); self && self->_acceptor.is_open())
         {
-          self->finish_sync(*session, request_id, version, supplied, notify, *outcome);
+          self->finish_sync(*session, request_id, notify, *outcome);
         }
       });
     if (!accepted)
@@ -430,106 +453,54 @@ namespace cipple::server
     }
   }
 
-  void Server::finish_sync(tcp::Session& session, const Uuid& request_id, const EntityMessage& version,
-                           const std::optional<EntityMessage>& supplied, const bool notify,
-                           const SyncOutcome& outcome)
+  void Server::finish_sync(tcp::Session& session, const Uuid& request_id, const bool notify, SyncOutcome& outcome)
   {
     if (outcome.error)
     {
       std::cerr << "Sync failed: " << *outcome.error << '\n';
     }
     send(session, message::SyncResponse{request_id, outcome.result});
-    if (outcome.result != message::Result::kSuccess)
+    if (outcome.result == message::Result::kRejected)
     {
       return;
     }
-    _clock.observe(version.last_update());
-    if (_replication && notify)
+    if (outcome.result == message::Result::kSuccess)
     {
-      _replication->notify();
+      if (_replication && notify)
+      {
+        _replication->notify();
+      }
+      if (outcome.is_current)
+      {
+        _subscriptions->publish_live(outcome.key, std::move(outcome.version), std::move(outcome.base));
+      }
     }
-    if (outcome.new_base && supplied)
-    {
-      publish(*supplied, false);
-    }
-    publish(version, outcome.is_current);
+    _subscriptions->wake(outcome.key);
+    schedule_replay();
   }
 
-  void Server::publish(const EntityMessage& version, const bool is_current)
+  void Server::schedule_replay() noexcept
   {
-    const ConfigKey key{version.application_name(), version.key()};
-    auto& reader = _storage->reader();
-    std::optional<message::DispatchRequest> durable;
-    tcp::EncodedFrame durable_frame;
-    tcp::EncodedFrame live_frame;
-    for (auto it = _connections.begin(); it != _connections.end();)
-    {
-      // Closing a congested session erases its entry synchronously.
-      auto& connection = (it++)->second;
-      const auto found = connection.subscriptions.find(key);
-      if (found == connection.subscriptions.end())
-      {
-        continue;
-      }
-      auto& subscription = found->second;
-      if (!subscription.cursor)
-      {
-        if (is_current)
-        {
-          if (!live_frame)
-          {
-            const message::DispatchRequest live{Uuid::generate(), "", version, 0, find_base(version)};
-            try
-            {
-              live_frame = tcp::encode_frame_shared(live);
-            }
-            catch (const std::length_error&)
-            {
-            }
-          }
-          send_frame(*connection.session, live_frame);
-        }
-      }
-      else if (subscription.pending || subscription.needs_replay)
-      {
-        subscription.needs_replay = true;
-      }
-      else
-      {
-        if (!durable)
-        {
-          durable.emplace(Uuid::generate(), "", version, reader.journal_sequence(version.uuid()),
-                          find_base(version));
-          try
-          {
-            durable_frame = tcp::encode_frame_shared(*durable);
-          }
-          catch (const std::length_error&)
-          {
-          }
-        }
-        if (durable->sequence() > *subscription.cursor)
-        {
-          subscription.pending = PendingDelivery{durable->uuid(), durable->sequence(), Clock::now() + kDeliveryTimeout};
-          send_frame(*connection.session, durable_frame);
-        }
-      }
-    }
-  }
-
-  void Server::replay(tcp::Session& session, const ConfigKey& key, Subscription& subscription)
-  {
-    auto events = _storage->reader().journal_after(key.first, key.second, *subscription.cursor, 1);
-    subscription.needs_replay = !events.empty();
-    if (events.empty())
+    if (_replay_scheduled || !_subscriptions->has_ready())
     {
       return;
     }
-    auto& event = events.front();
-    auto base = find_base(event.message);
-    const auto reply_id = Uuid::generate();
-    subscription.pending = PendingDelivery{reply_id, event.sequence, Clock::now() + kDeliveryTimeout};
-    send(session, message::DispatchRequest{reply_id, "", std::move(event.message), event.sequence, std::move(base)});
+    try
+    {
+      asio::post(_context, [weak = weak_from_this()] {
+        if (const auto self = weak.lock(); self && self->_acceptor.is_open())
+        {
+          self->_replay_scheduled = false;
+          self->_subscriptions->replay_ready();
+        }
+      });
+      _replay_scheduled = true;
+    }
+    catch (const std::exception& error)
+    {
+      std::cerr << "Scheduling subscription replay failed: " << error.what() << '\n';
+      _subscriptions->replay_ready();
+    }
   }
 
   void Server::check_delivery_deadlines()
@@ -538,18 +509,7 @@ namespace cipple::server
     _delivery_timer.async_wait([weak = weak_from_this()](const boost::system::error_code error) {
       if (const auto self = weak.lock(); self && !error && self->_acceptor.is_open())
       {
-        const auto now = Clock::now();
-        for (auto it = self->_connections.begin(); it != self->_connections.end();)
-        {
-          const auto& connection = (it++)->second;
-          if (std::ranges::any_of(connection.subscriptions, [&](const auto& entry) {
-            const auto& pending = entry.second.pending;
-            return pending && pending->deadline <= now;
-          }))
-          {
-            connection.session->close();
-          }
-        }
+        self->_subscriptions->expire();
         self->check_delivery_deadlines();
       }
     });
@@ -586,15 +546,13 @@ namespace cipple::server
           const auto& request = static_cast<const message::SubscribeRequest&>(message);
           // Empty address and port zero select dispatch over the same TCP session.
           const bool in_session = request.callback_address().empty() && request.callback_port() == 0;
-          const auto cursor = request.resume_after();
-          const ConfigKey key{request.application_name(), request.key()};
           if (in_session)
           {
-            _connections.at(connection_id).subscriptions.insert_or_assign(key, Subscription{.cursor = cursor});
+            _subscriptions->subscribe(connection_id, {request.application_name(), request.key()}, request.resume_after());
           }
-          if (send(session, message::SubscribeResponse{request.uuid(), in_session}) && in_session && cursor)
+          if (send(session, message::SubscribeResponse{request.uuid(), in_session}) && in_session)
           {
-            replay(session, key, _connections.at(connection_id).subscriptions.at(key));
+            schedule_replay();
           }
           break;
         }
@@ -604,32 +562,16 @@ namespace cipple::server
           const bool in_session = request.callback_address().empty() && request.callback_port() == 0;
           if (in_session)
           {
-            _connections.at(connection_id).subscriptions.erase({request.application_name(), request.key()});
+            _subscriptions->unsubscribe(connection_id, {request.application_name(), request.key()});
           }
           send(session, message::UnsubscribeResponse{request.uuid(), in_session});
           break;
         }
       case MessageType::kDispatchResponse:
         {
-          auto& subscriptions = _connections.at(connection_id).subscriptions;
-          const auto it = std::ranges::find_if(subscriptions, [&](const auto& entry) {
-            return entry.second.pending && entry.second.pending->reply_id == message.uuid();
-          });
-          if (it != subscriptions.end())
-          {
-            if (!static_cast<const message::DispatchResponse&>(message).success())
-            {
-              session.close();
-              break;
-            }
-            auto& subscription = it->second;
-            subscription.cursor = subscription.pending->sequence;
-            subscription.pending.reset();
-            if (subscription.needs_replay)
-            {
-              replay(session, it->first, subscription);
-            }
-          }
+          const auto& reply = static_cast<const message::DispatchResponse&>(message);
+          _subscriptions->acknowledge(connection_id, reply.uuid(), reply.success());
+          schedule_replay();
           break;
         }
       case MessageType::kSyncRequest:
