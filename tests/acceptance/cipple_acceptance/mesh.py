@@ -157,14 +157,14 @@ def run_mesh(server_bin: Path, client_bin: Path, work: Path, env: dict[str, str]
         )
         observations.extend(_safe_dumps(db_a, db_b, db_c))
         if (
-            seen == VALUE
-            and bit_c == 1
-            and bit_a == 0
-            and message_count(db_a, MSG) == 1
-            and message_count(db_b, MSG) == 1
-            and message_count(db_c, MSG) == 1
-            and server_a.proc.poll() is not None
-            and visible(port_b) == VALUE
+                seen == VALUE
+                and bit_c == 1
+                and bit_a == 0
+                and message_count(db_a, MSG) == 1
+                and message_count(db_b, MSG) == 1
+                and message_count(db_c, MSG) == 1
+                and server_a.proc.poll() is not None
+                and visible(port_b) == VALUE
         ):
             return [
                 _case(

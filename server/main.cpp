@@ -20,7 +20,7 @@ namespace
 {
   namespace asio = boost::asio;
 
-  template<typename Integer>
+  template <typename Integer>
   Integer parse_integer(const std::string_view value, const char* what)
   {
     const auto* end = value.data() + value.size();
@@ -68,7 +68,7 @@ int main(const int argc, char** argv)
   if (argc < 3 || argc % 2 != 1)
   {
     std::cerr << "Usage: cipple_server <port> <database> [--bind <ip>] [--id <id>]\n"
-                 "       [--peers <id@ip:port,...>] [--overlay mesh|star] [--clock-offset-ms <ms>]\n";
+      "       [--peers <id@ip:port,...>] [--overlay mesh|star] [--clock-offset-ms <ms>]\n";
     return 2;
   }
 
@@ -113,9 +113,10 @@ int main(const int argc, char** argv)
       std::make_unique<cipple::storage::SqliteStorage>(argv[2]),
       std::make_unique<cipple::storage::SqliteStorage>(argv[2]));
     const auto server = cipple::server::Server::start(context, {bind, port}, std::move(storage),
-      std::move(options));
+                                                      std::move(options));
     asio::signal_set signals{context, SIGINT, SIGTERM};
-    signals.async_wait([&](const boost::system::error_code error, int) {
+    signals.async_wait([&](const boost::system::error_code error, int)
+    {
       if (!error)
       {
         server->stop();

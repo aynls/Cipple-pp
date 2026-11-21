@@ -56,8 +56,8 @@ namespace cipple::server
   {
   public:
     static std::shared_ptr<Server> start(boost::asio::io_context& context,
-                                        const boost::asio::ip::tcp::endpoint& endpoint,
-                                        std::unique_ptr<storage::StorageWriter> storage, ServerOptions options);
+                                         const boost::asio::ip::tcp::endpoint& endpoint,
+                                         std::unique_ptr<storage::StorageWriter> storage, ServerOptions options);
     ~Server() noexcept;
 
     const boost::asio::ip::tcp::endpoint& local_endpoint() const noexcept;
@@ -76,9 +76,9 @@ namespace cipple::server
     void read(tcp::Session& session, const message::GetRequest& request) const;
     void sync(tcp::Session& session, const message::SyncRequest& request);
 
-    template<typename Response, typename Request>
+    template <typename Response, typename Request>
     void write(tcp::Session& session, const Request& request, entity::EntityMessage::Payload payload);
-    template<typename Response>
+    template <typename Response>
     void finish_write(tcp::Session* session, const Uuid& request_id, WriteOutcome& outcome);
     void finish_sync(tcp::Session* session, const Uuid& request_id, bool notify, SyncOutcome& outcome);
 

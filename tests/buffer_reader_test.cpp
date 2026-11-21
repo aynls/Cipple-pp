@@ -43,7 +43,8 @@ TEST(BufferReaderTest, ReadsSignedIntegersBitExact)
 {
   const std::vector<std::uint8_t> raw{
     0xFF, 0xFF, 0xFF, 0xFF,
-    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE};
+    0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE
+  };
   BufferReader reader{raw};
 
   EXPECT_EQ(reader.read_i32(), -1);
@@ -54,7 +55,8 @@ TEST(BufferReaderTest, ReadsStringWithU64LengthPrefix)
 {
   const std::vector<std::uint8_t> raw{
     0, 0, 0, 0, 0, 0, 0, 3,
-    0x61, 0x62, 0x63};
+    0x61, 0x62, 0x63
+  };
   BufferReader reader{raw};
 
   EXPECT_EQ(reader.read_string(), "abc");

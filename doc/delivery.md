@@ -18,4 +18,5 @@ CTest 覆盖帧编解码、会话、SQLite 事务、确认队列、订阅存储�
 
 结果记录在控制台显示的报告目录。文本报告列出命令和观测，JSON 便于后续处理。SHA256 文件记录被测二进制与报告的校验值。
 
-运行 `pwsh -File scripts/demo.ps1 -SkipBuild` 可以从 CLI 验证三节点的持久订阅。测量本地提交与分发开销时使用[性能测量工具](../bench/README.md)。
+运行 `pwsh -File scripts/demo.ps1 -SkipBuild` 可以从 CLI
+验证三节点的持久订阅。测量本地提交与分发开销时使用[性能测量工具](../bench/README.md)。

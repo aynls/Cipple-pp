@@ -29,10 +29,10 @@ namespace cipple::storage
                                                 std::string_view key) const override;
     std::expected<entity::EntityMessage, MessageUnavailable> find_message(const Uuid& uuid) const override;
     std::vector<PendingId> pending_ids_after(std::int32_t node_id, const std::optional<PendingCursor>& after,
-                                            std::int64_t limit) const override;
+                                             std::int64_t limit) const override;
     std::size_t mark_acked_batch(std::int32_t node_id, std::span<const Uuid> message_uuids) override;
     std::vector<JournalEntry> journal_after(std::string_view application_name, std::string_view key,
-                                           std::int64_t after, std::int64_t limit) const override;
+                                            std::int64_t after, std::int64_t limit) const override;
     std::int64_t journal_sequence(const Uuid& uuid) const override;
     std::int64_t version_watermark() const override;
     std::size_t recycle(std::string_view application_name, std::string_view key,

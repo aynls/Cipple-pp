@@ -54,8 +54,10 @@ namespace
   TEST(MessageProtocolTest, RejectsIncrementalSyncWithoutFullBase)
   {
     auto body = message_body(MessageType::kSyncRequest);
-    const EntityMessage delta{Uuid::generate(), "app", "key", 2, 1,
-                              EntityMessage::IncrementalUpdate{Uuid::generate(), AtomicOperation::kAddEntry, "x"}};
+    const EntityMessage delta{
+      Uuid::generate(), "app", "key", 2, 1,
+      EntityMessage::IncrementalUpdate{Uuid::generate(), AtomicOperation::kAddEntry, "x"}
+    };
     delta.encode(body);
     body.write_i32(1);
     EXPECT_THROW(decode_message(body.bytes()), std::out_of_range);

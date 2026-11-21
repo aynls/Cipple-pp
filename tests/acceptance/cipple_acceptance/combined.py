@@ -142,7 +142,9 @@ def run_combined(server_bin: Path, client_bin: Path, work: Path, env: dict[str, 
 
         state = work / "subscriber.db"
         first = _subscribe(client_bin, state, port_b, work, env, children, commands)
-        if not first.wait_for("Subscribed", 8, "stdout") or not first.wait_for("\nbase\n", 8, "both") and "base" not in first.text("stdout"):
+        if not first.wait_for("Subscribed", 8, "stdout") or not first.wait_for("\nbase\n", 8,
+                                                                               "both") and "base" not in first.text(
+                "stdout"):
             observations.append(first.text())
             first.kill()
             return [failover, _case("cluster_fault", "fail", "B 上的订阅者没有收到基线。", commands, observations)]
@@ -150,7 +152,8 @@ def run_combined(server_bin: Path, client_bin: Path, work: Path, env: dict[str, 
         first.kill()
 
         code, out, err = cli(
-            ["--request-id", str(INC), f"127.0.0.1:{port_a}", "incremental", "acc", "cfg", str(BASE), "add_entry", "+inc"]
+            ["--request-id", str(INC), f"127.0.0.1:{port_a}", "incremental", "acc", "cfg", str(BASE), "add_entry",
+             "+inc"]
         )
         observations.append(f"incremental put exit={code} stdout={out!r} stderr={err.strip()!r}")
         if code != 0:
@@ -184,7 +187,8 @@ def run_combined(server_bin: Path, client_bin: Path, work: Path, env: dict[str, 
         plan.release()
         if message_count(db_b, INC) != 1 or wait_visible(port_b, "base+inc", 15) != "base+inc":
             observations.extend(_dumps(db_a, db_b, db_c))
-            return [failover, _case("cluster_fault", "fail", "A 重启后 B 上的增量被重放成了另一个值。", commands, observations)]
+            return [failover,
+                    _case("cluster_fault", "fail", "A 重启后 B 上的增量被重放成了另一个值。", commands, observations)]
         deadline = time.monotonic() + 15
         bit = ack_bit(db_a, INC, 2)
         while time.monotonic() < deadline and bit != 1:
@@ -196,7 +200,8 @@ def run_combined(server_bin: Path, client_bin: Path, work: Path, env: dict[str, 
             observations.extend(_frame_notes(plan))
             return [
                 failover,
-                _case("cluster_fault", "fail", "重启后的重试没有恰好确认一次，或增量被再次插入。", commands, observations),
+                _case("cluster_fault", "fail", "重启后的重试没有恰好确认一次，或增量被再次插入。", commands,
+                      observations),
             ]
 
         code, out, err = cli(["--request-id", str(DELETE), f"127.0.0.1:{port_a}", "delete", "acc", "cfg"])
@@ -205,7 +210,8 @@ def run_combined(server_bin: Path, client_bin: Path, work: Path, env: dict[str, 
             observations.extend(_dumps(db_a, db_b, db_c))
             return [
                 failover,
-                _case("cluster_fault", "fail", "删除没有在遮蔽可见值的同时把增量留在 B 的日志里。", commands, observations),
+                _case("cluster_fault", "fail", "删除没有在遮蔽可见值的同时把增量留在 B 的日志里。", commands,
+                      observations),
             ]
 
         resumed = _subscribe(client_bin, state, port_b, work, env, children, commands)
@@ -213,7 +219,8 @@ def run_combined(server_bin: Path, client_bin: Path, work: Path, env: dict[str, 
         saw_delete = resumed.wait_for("<deleted>", 8, "stdout")
         before_dup = resumed.text("stdout").count("base+inc")
         code, out, err = cli(
-            ["--request-id", str(INC), f"127.0.0.1:{port_a}", "incremental", "acc", "cfg", str(BASE), "add_entry", "+inc"]
+            ["--request-id", str(INC), f"127.0.0.1:{port_a}", "incremental", "acc", "cfg", str(BASE), "add_entry",
+             "+inc"]
         )
         observations.append(f"duplicate incremental exit={code} stdout={out!r} stderr={err.strip()!r}")
         time.sleep(1.2)
@@ -240,7 +247,8 @@ def run_combined(server_bin: Path, client_bin: Path, work: Path, env: dict[str, 
             observations.extend(_frame_notes(plan))
             return [
                 failover,
-                _case("cluster_fault", "fail", "分区愈合后 C 没有在删除已经获胜的情况下补到那条增量。", commands, observations),
+                _case("cluster_fault", "fail", "分区愈合后 C 没有在删除已经获胜的情况下补到那条增量。", commands,
+                      observations),
             ]
         skew_hlc = message_hlc(db_c, SKEW)
         delete_hlc = message_hlc(db_c, DELETE)
@@ -257,7 +265,9 @@ def run_combined(server_bin: Path, client_bin: Path, work: Path, env: dict[str, 
                 _case("cluster_fault", "fail", "C 上的偏移写入不是以更低的 HLC 留在日志里。", commands, observations),
             ]
         if wait_visible(port_a, None, 8) is not None or message_count(db_a, INC) != 1 or message_count(db_c, INC) != 1:
-            return [failover, _case("cluster_fault", "fail", "愈合后的三个节点没有收敛到同一次增量加最终删除。", commands, observations)]
+            return [failover,
+                    _case("cluster_fault", "fail", "愈合后的三个节点没有收敛到同一次增量加最终删除。", commands,
+                          observations)]
         return [
             failover,
             _case(
@@ -297,7 +307,8 @@ def _failover(cli, dead: int, port_b: int, commands: list[str], observations: li
     return _case("node_failover", "fail", "端点故障转移没有落到预期的存活节点。", commands[-1:], [out, err])
 
 
-def _subscribe(client_bin: Path, state: Path, port: int, work: Path, env: dict[str, str], children: list[Child], commands: list[str]) -> Child:
+def _subscribe(client_bin: Path, state: Path, port: int, work: Path, env: dict[str, str], children: list[Child],
+               commands: list[str]) -> Child:
     args = [
         str(client_bin),
         "--state",
@@ -315,7 +326,8 @@ def _subscribe(client_bin: Path, state: Path, port: int, work: Path, env: dict[s
     return child
 
 
-def _relaunch(launch, previous: Child, port: int, db: Path, peers: str, proxies: list[Proxy], observations: list[str]) -> tuple[Child, int]:
+def _relaunch(launch, previous: Child, port: int, db: Path, peers: str, proxies: list[Proxy],
+              observations: list[str]) -> tuple[Child, int]:
     previous.kill()
     try:
         return launch(1, port, db, peers, 0), port

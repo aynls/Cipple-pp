@@ -112,46 +112,48 @@ namespace cipple::storage
     return *_reader;
   }
 
-  bool StorageWriter::submit(boost::asio::io_context& back, std::function<void(Storage&)> task,
+  bool StorageWriter::submit(boost::asio::io_context& back, std::function<void(Storage &)> task,
                              std::function<void()> done, const std::size_t charge_bytes)
   {
     return enqueue(back, std::move(task), std::move(done), charge_bytes, false);
   }
 
-  bool StorageWriter::submit_ack(boost::asio::io_context& back, std::function<void(Storage&)> task,
+  bool StorageWriter::submit_ack(boost::asio::io_context& back, std::function<void(Storage &)> task,
                                  std::function<void()> done)
   {
     return enqueue(back, std::move(task), std::move(done), 0, true);
   }
 
-  bool StorageWriter::enqueue(boost::asio::io_context& back, std::function<void(Storage&)> task,
+  bool StorageWriter::enqueue(boost::asio::io_context& back, std::function<void(Storage &)> task,
                               std::function<void()> done, const std::size_t charge_bytes, const bool ack)
   {
     auto charge = std::make_shared<Charge>(_state, charge_bytes, ack);
-    std::function<void()> item =
-        [this, &back, task = std::move(task), done = std::move(done), charge]() mutable {
-          try
-          {
-            task(*_writer);
-          }
-          catch (const std::exception& error)
-          {
-            std::cerr << "StorageWriter: task failed: " << error.what() << '\n';
-          }
-          if (done)
-          {
-            boost::asio::post(back, [done = std::move(done), charge] { done(); });
-          }
-        };
+    std::function < void() > item =
+      [this, &back, task = std::move(task), done = std::move(done), charge]() mutable
+      {
+        try
+        {
+          task(*_writer);
+        }
+        catch (const std::exception& error)
+        {
+          std::cerr << "StorageWriter: task failed: " << error.what() << '\n';
+        }
+        if (done)
+        {
+          boost::asio::post(back, [done = std::move(done), charge] { done(); });
+        }
+      };
     {
       const std::lock_guard lock{_state->mutex};
       if (_state->stopping)
       {
         return false;
       }
-      if (ack ? _state->ack_tasks >= _limits.max_ack_tasks
-              : _state->request_tasks >= _limits.max_request_tasks
-                    || charge_bytes > _limits.max_request_bytes - _state->request_bytes)
+      if (ack
+            ? _state->ack_tasks >= _limits.max_ack_tasks
+            : _state->request_tasks >= _limits.max_request_tasks
+            || charge_bytes > _limits.max_request_bytes - _state->request_bytes)
       {
         return false;
       }
@@ -197,7 +199,7 @@ namespace cipple::storage
   {
     for (;;)
     {
-      std::function<void()> item;
+      std::function < void() > item;
       {
         std::unique_lock lock{_state->mutex};
         _state->wakeup.wait(lock, [this] { return _state->stopping || !_state->queue.empty(); });

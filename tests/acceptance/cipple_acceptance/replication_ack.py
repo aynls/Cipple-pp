@@ -40,10 +40,14 @@ def run_replication_ack(server_bin: Path, _client_bin: Path, work: Path, env: di
         with closing(sqlite3.connect(source_db, timeout=5)) as db:
             with db:
                 db.execute("""
-                    CREATE TRIGGER fail_ack_update BEFORE UPDATE OF acknowledged ON ack
-                    WHEN NEW.acknowledged = 1
-                    BEGIN SELECT RAISE(ABORT, 'acceptance blocks local acknowledgement'); END
-                """)
+                           CREATE TRIGGER fail_ack_update
+                               BEFORE UPDATE OF acknowledged
+                               ON ack
+                               WHEN NEW.acknowledged = 1
+                           BEGIN
+                               SELECT RAISE(ABORT, 'acceptance blocks local acknowledgement');
+                           END
+                           """)
 
             with closing(Conn("127.0.0.1", source_port)) as writer:
                 response = writer.request(put_request(entity, b"replication", b"ack", b"stored"))

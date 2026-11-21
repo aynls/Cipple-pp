@@ -33,10 +33,11 @@ namespace cipple::client
     using entity::EntityMessage;
     using message::MessageType;
 
-    template<typename Response>
+    template <typename Response>
     auto status_handler(Client::StatusHandler on_done)
     {
-      return [on_done = std::move(on_done)](const error_code error, const message::Message* response) {
+      return [on_done = std::move(on_done)](const error_code error, const message::Message* response)
+      {
         if (on_done)
         {
           on_done(error, !error && static_cast<const Response&>(*response).success());
@@ -66,36 +67,40 @@ namespace cipple::client
     auto client = std::shared_ptr<Client>{new Client{context, std::move(handlers), options}};
     const auto weak = client->weak_from_this();
     client->_connector = tcp::Connector::start_any(context, std::move(endpoints), {
-      .on_connected = [weak](std::shared_ptr<tcp::Session> session) {
-        if (const auto self = weak.lock())
-        {
-          self->_session = std::move(session);
-          self->schedule_heartbeat();
-          if (self->_handlers.on_connected)
-          {
-            self->_handlers.on_connected();
-          }
-        }
-      },
-      .on_message = [weak](tcp::Session& session, std::unique_ptr<message::Message> message) {
-        if (const auto self = weak.lock())
-        {
-          self->on_message(session, *message);
-        }
-      },
-      .on_disconnected = [weak](const error_code reason) {
-        if (const auto self = weak.lock())
-        {
-          self->_heartbeat_timer.reset();
-          self->_session.reset();
-          self->fail_pending(reason);
-          if (self->_connector && self->_handlers.on_disconnected)
-          {
-            self->_handlers.on_disconnected(reason);
-          }
-        }
-      },
-    }, {.connect_timeout = options.connect_timeout});
+                                                     .on_connected = [weak](std::shared_ptr<tcp::Session> session)
+                                                     {
+                                                       if (const auto self = weak.lock())
+                                                       {
+                                                         self->_session = std::move(session);
+                                                         self->schedule_heartbeat();
+                                                         if (self->_handlers.on_connected)
+                                                         {
+                                                           self->_handlers.on_connected();
+                                                         }
+                                                       }
+                                                     },
+                                                     .on_message = [weak](
+                                                       tcp::Session& session, std::unique_ptr<message::Message> message)
+                                                     {
+                                                       if (const auto self = weak.lock())
+                                                       {
+                                                         self->on_message(session, *message);
+                                                       }
+                                                     },
+                                                     .on_disconnected = [weak](const error_code reason)
+                                                     {
+                                                       if (const auto self = weak.lock())
+                                                       {
+                                                         self->_heartbeat_timer.reset();
+                                                         self->_session.reset();
+                                                         self->fail_pending(reason);
+                                                         if (self->_connector && self->_handlers.on_disconnected)
+                                                         {
+                                                           self->_handlers.on_disconnected(reason);
+                                                         }
+                                                       }
+                                                     },
+                                                   }, {.connect_timeout = options.connect_timeout});
     return client;
   }
 
@@ -152,68 +157,77 @@ namespace cipple::client
                                   const entity::AtomicOperation operation, std::string value,
                                   StatusHandler on_done, const Uuid uuid)
   {
-    send(message::IncrementalUpdateRequest{uuid, std::move(application_name), std::move(key),
-                                           base_message_uuid, operation, std::move(value)},
+    send(message::IncrementalUpdateRequest{
+           uuid, std::move(application_name), std::move(key),
+           base_message_uuid, operation, std::move(value)
+         },
          MessageType::kIncrementalUpdateResponse,
          status_handler<message::IncrementalUpdateResponse>(std::move(on_done)));
   }
 
   void Client::get_response(std::string application_name, std::string key,
-                            std::function<void(error_code, const message::GetResponse*)> on_done)
+                            std::function<void(error_code, const message::GetResponse *)> on_done)
   {
     send(message::GetRequest{Uuid::generate(), std::move(application_name), std::move(key)}, MessageType::kGetResponse,
-      [on_done = std::move(on_done)](const error_code error, const message::Message* response) {
-        on_done(error, static_cast<const message::GetResponse*>(response));
-      });
+         [on_done = std::move(on_done)](const error_code error, const message::Message* response)
+         {
+           on_done(error, static_cast<const message::GetResponse*>(response));
+         });
   }
 
   void Client::get(std::string application_name, std::string key, GetHandler on_done)
   {
     get_response(std::move(application_name), std::move(key),
-      [on_done = std::move(on_done)](const error_code error, const message::GetResponse* reply) {
-        if (!on_done)
-        {
-          return;
-        }
-        std::optional<std::string> value;
-        if (!error && !reply->items().empty() && reply->items().back().operation_type() != entity::OperationType::kDelete)
-        {
-          value = reply->value();
-        }
-        on_done(error, std::move(value));
-      });
+                 [on_done = std::move(on_done)](const error_code error, const message::GetResponse* reply)
+                 {
+                   if (!on_done)
+                   {
+                     return;
+                   }
+                   std::optional<std::string> value;
+                   if (!error && !reply->items().empty() && reply->items().back().operation_type() !=
+                     entity::OperationType::kDelete)
+                   {
+                     value = reply->value();
+                   }
+                   on_done(error, std::move(value));
+                 });
   }
 
   void Client::get_base(std::string application_name, std::string key, GetBaseHandler on_done)
   {
     get_response(std::move(application_name), std::move(key),
-      [on_done = std::move(on_done)](const error_code error, const message::GetResponse* reply) {
-        if (!on_done)
-        {
-          return;
-        }
-        if (error || reply->items().empty() || reply->items().back().operation_type() == entity::OperationType::kDelete)
-        {
-          on_done(error, std::nullopt);
-          return;
-        }
-        const auto& latest = reply->items().back();
-        if (const auto* increment = std::get_if<EntityMessage::IncrementalUpdate>(&latest.payload()))
-        {
-          const auto base = std::ranges::find_if(reply->items(), [&](const EntityMessage& version) {
-            return version.uuid() == increment->base_message_uuid && version.operation_type() == entity::OperationType::kUpdate
-              && version.application_name() == latest.application_name() && version.key() == latest.key();
-          });
-          if (base == reply->items().end())
-          {
-            on_done(make_error_code(boost::system::errc::protocol_error), std::nullopt);
-            return;
-          }
-          on_done({}, base->uuid());
-          return;
-        }
-        on_done({}, latest.uuid());
-      });
+                 [on_done = std::move(on_done)](const error_code error, const message::GetResponse* reply)
+                 {
+                   if (!on_done)
+                   {
+                     return;
+                   }
+                   if (error || reply->items().empty() || reply->items().back().operation_type() ==
+                     entity::OperationType::kDelete)
+                   {
+                     on_done(error, std::nullopt);
+                     return;
+                   }
+                   const auto& latest = reply->items().back();
+                   if (const auto* increment = std::get_if<EntityMessage::IncrementalUpdate>(&latest.payload()))
+                   {
+                     const auto base = std::ranges::find_if(reply->items(), [&](const EntityMessage& version)
+                     {
+                       return version.uuid() == increment->base_message_uuid && version.operation_type() ==
+                         entity::OperationType::kUpdate
+                         && version.application_name() == latest.application_name() && version.key() == latest.key();
+                     });
+                     if (base == reply->items().end())
+                     {
+                       on_done(make_error_code(boost::system::errc::protocol_error), std::nullopt);
+                       return;
+                     }
+                     on_done({}, base->uuid());
+                     return;
+                   }
+                   on_done({}, latest.uuid());
+                 });
   }
 
   void Client::subscribe(std::string application_name, std::string key, StatusHandler on_done,
@@ -249,14 +263,18 @@ namespace cipple::client
     }
     const auto generation = ++_request_generation;
     auto pending = _pending.emplace(request.uuid(),
-      PendingResponse{response_type, std::move(on_done), generation,
-                      asio::steady_timer{_context, timeout.value_or(_request_timeout)}}).first;
-    pending->second.deadline.async_wait([weak = weak_from_this(), uuid = request.uuid(), generation](const error_code error) {
-      if (const auto self = weak.lock(); self && !error)
+                                    PendingResponse{
+                                      response_type, std::move(on_done), generation,
+                                      asio::steady_timer{_context, timeout.value_or(_request_timeout)}
+                                    }).first;
+    pending->second.deadline.async_wait(
+      [weak = weak_from_this(), uuid = request.uuid(), generation](const error_code error)
       {
-        self->on_request_timeout(uuid, generation);
-      }
-    });
+        if (const auto self = weak.lock(); self && !error)
+        {
+          self->on_request_timeout(uuid, generation);
+        }
+      });
   }
 
   void Client::schedule_heartbeat()
@@ -267,7 +285,8 @@ namespace cipple::client
     }
     _heartbeat_timer.emplace(_context, *_heartbeat_interval);
     _heartbeat_timer->async_wait(
-      [weak = weak_from_this(), session = std::weak_ptr<tcp::Session>{_session}](const error_code error) {
+      [weak = weak_from_this(), session = std::weak_ptr<tcp::Session>{_session}](const error_code error)
+      {
         const auto self = weak.lock();
         const auto connection = session.lock();
         if (!error && self && connection && connection == self->_session)
@@ -280,21 +299,22 @@ namespace cipple::client
   void Client::send_heartbeat()
   {
     send(message::HeartbeatRequest{Uuid::generate()}, MessageType::kHeartbeatResponse,
-      [weak = weak_from_this(), session = std::weak_ptr<tcp::Session>{_session}](
-        const error_code error, const message::Message* response) {
-        const auto self = weak.lock();
-        const auto connection = session.lock();
-        if (!self || !connection || connection != self->_session)
-        {
-          return;
-        }
-        if (error || !static_cast<const message::HeartbeatResponse&>(*response).success())
-        {
-          connection->close();
-          return;
-        }
-        self->schedule_heartbeat();
-      }, _heartbeat_interval);
+         [weak = weak_from_this(), session = std::weak_ptr<tcp::Session>{_session}](
+           const error_code error, const message::Message* response)
+         {
+           const auto self = weak.lock();
+           const auto connection = session.lock();
+           if (!self || !connection || connection != self->_session)
+           {
+             return;
+           }
+           if (error || !static_cast<const message::HeartbeatResponse&>(*response).success())
+           {
+             connection->close();
+             return;
+           }
+           self->schedule_heartbeat();
+         }, _heartbeat_interval);
   }
 
   void Client::on_message(tcp::Session& session, const message::Message& message)

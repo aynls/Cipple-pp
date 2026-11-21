@@ -60,6 +60,6 @@ namespace cipple::message
     {
       base = entity::EntityMessage::decode(reader);
     }
-    return std::make_unique<DispatchRequest>(uuid, std::move(entity), sequence, std::move(base));
+    return std::make_unique < DispatchRequest > (uuid, std::move(entity), sequence, std::move(base));
   }
 }

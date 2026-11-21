@@ -45,9 +45,16 @@ def inspect_db(path: Path) -> dict:
             }
             for row in connection.execute(
                 """
-                SELECT uuid, operation_type, last_update, last_update_server_id,
-                       atomic_operation, value, base_message_uuid, application_name, key
-                FROM message ORDER BY last_update, last_update_server_id, uuid
+                SELECT uuid,
+                       operation_type,
+                       last_update,
+                       last_update_server_id,
+                       atomic_operation,
+                       value,
+                       base_message_uuid,
+                       application_name, key
+                FROM message
+                ORDER BY last_update, last_update_server_id, uuid
                 """
             )
         ]

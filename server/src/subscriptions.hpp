@@ -69,7 +69,7 @@ namespace cipple::server
       std::map<ConfigKey, Subscription> subscriptions;
     };
 
-    template<typename Visit>
+    template <typename Visit>
     void visit_subscribers(const ConfigKey& key, Visit visit) noexcept;
     void disconnect(ConnectionId id) noexcept;
     void remove_route(ConnectionId id, const ConfigKey& key, const Subscription& subscription) noexcept;

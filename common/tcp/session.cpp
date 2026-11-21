@@ -23,7 +23,7 @@ namespace cipple::tcp
   }
 
   std::shared_ptr<Session> Session::start(boost::asio::ip::tcp::socket socket, MessageHandler on_message,
-                                           CloseHandler on_close, const SessionLimits limits)
+                                          CloseHandler on_close, const SessionLimits limits)
   {
     limits.validate();
     if (!socket.is_open() || !on_message)
@@ -31,7 +31,8 @@ namespace cipple::tcp
       throw std::invalid_argument{"session: a connected socket and a message handler are required"};
     }
     auto session = std::shared_ptr<Session>{
-      new Session{std::move(socket), std::move(on_message), std::move(on_close), limits}};
+      new Session{std::move(socket), std::move(on_message), std::move(on_close), limits}
+    };
     session->read_prefix();
     return session;
   }
@@ -100,9 +101,10 @@ namespace cipple::tcp
   void Session::read_prefix()
   {
     boost::asio::async_read(_socket, boost::asio::buffer(_prefix),
-                            [self = shared_from_this()](const boost::system::error_code error, std::size_t) {
-      self->on_prefix(error);
-    });
+                            [self = shared_from_this()](const boost::system::error_code error, std::size_t)
+                            {
+                              self->on_prefix(error);
+                            });
   }
 
   void Session::on_prefix(const boost::system::error_code error)
@@ -135,9 +137,10 @@ namespace cipple::tcp
 
     _body.resize(body_length);
     boost::asio::async_read(_socket, boost::asio::buffer(_body),
-                            [self = shared_from_this()](const boost::system::error_code read_error, std::size_t) {
-      self->on_body(read_error);
-    });
+                            [self = shared_from_this()](const boost::system::error_code read_error, std::size_t)
+                            {
+                              self->on_body(read_error);
+                            });
   }
 
   void Session::on_body(const boost::system::error_code error)
@@ -182,9 +185,10 @@ namespace cipple::tcp
     _active_write.emplace(std::move(_pending_writes.front()));
     _pending_writes.pop_front();
     boost::asio::async_write(_socket, boost::asio::buffer(*_active_write->bytes),
-                             [self = shared_from_this()](const boost::system::error_code error, std::size_t) {
-      self->on_write(error);
-    });
+                             [self = shared_from_this()](const boost::system::error_code error, std::size_t)
+                             {
+                               self->on_write(error);
+                             });
   }
 
   void Session::on_write(const boost::system::error_code error)

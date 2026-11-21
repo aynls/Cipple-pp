@@ -44,7 +44,7 @@ namespace cipple::bench
   {
     const auto ops = arg_count(args, "--ops", 300);
     const auto db = std::filesystem::temp_directory_path() /
-                    ("cipple-commit-bench-" + Uuid::generate().to_string() + ".db");
+      ("cipple-commit-bench-" + Uuid::generate().to_string() + ".db");
 
     for (int variant = 0; variant <= 1; ++variant)
     {
@@ -65,8 +65,9 @@ namespace cipple::bench
       if (variant == 0)
       {
         storage::SqliteStorage storage{db};
-        std::function<void()> step;
-        step = [&] {
+        std::function < void() > step;
+        step = [&]
+        {
           if (op >= ops)
           {
             return;
@@ -84,12 +85,15 @@ namespace cipple::bench
       }
       else
       {
-        storage::StorageWriter writer{std::make_unique<storage::SqliteStorage>(db),
-                                      std::make_unique<storage::SqliteStorage>(db)};
+        storage::StorageWriter writer{
+          std::make_unique<storage::SqliteStorage>(db),
+          std::make_unique<storage::SqliteStorage>(db)
+        };
         std::size_t done_count = 0;
         auto work = asio::make_work_guard(io);
-        std::function<void()> step;
-        step = [&] {
+        std::function < void() > step;
+        step = [&]
+        {
           if (op >= ops)
           {
             return;
@@ -99,7 +103,8 @@ namespace cipple::bench
           const auto t0 = Clock::now();
           const auto i = op++;
           if (!writer.submit(io, [&, i](storage::Storage& s) { s.append(messages[i], {}); },
-                             [&, t0] {
+                             [&, t0]
+                             {
                                commits.push_back(us_since(t0));
                                if (++done_count == ops)
                                {

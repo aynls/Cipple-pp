@@ -42,45 +42,56 @@ namespace
     {
       return AppendResult::kInserted;
     }
+
     cipple::storage::AppendOutcome append_with_outcome(const EntityMessage&, std::span<const std::int32_t>,
-                                                     const EntityMessage*) override
+                                                       const EntityMessage*) override
     {
       return {AppendResult::kInserted, true};
     }
+
     std::vector<ItemKey> list_keys() const override
     {
       return {};
     }
+
     std::vector<EntityMessage> history(std::string_view, std::string_view) const override
     {
       return {};
     }
+
     std::expected<EntityMessage, MessageUnavailable> find_message(const Uuid&) const override
     {
       return std::unexpected{MessageUnavailable::kMissing};
     }
+
     std::vector<cipple::storage::PendingId> pending_ids_after(std::int32_t,
-        const std::optional<cipple::storage::PendingCursor>&, std::int64_t) const override
+                                                              const std::optional<cipple::storage::PendingCursor>&,
+                                                              std::int64_t) const override
     {
       return {};
     }
+
     std::size_t mark_acked_batch(std::int32_t, std::span<const Uuid> ids) override
     {
       return ids.size();
     }
+
     std::vector<JournalEntry> journal_after(std::string_view, std::string_view, std::int64_t,
-                                          std::int64_t) const override
+                                            std::int64_t) const override
     {
       return {};
     }
+
     std::int64_t journal_sequence(const Uuid&) const override
     {
       return 0;
     }
+
     std::int64_t version_watermark() const override
     {
       return 0;
     }
+
     std::size_t recycle(std::string_view, std::string_view, std::size_t) override
     {
       return 0;
@@ -92,14 +103,17 @@ namespace
     return std::make_unique<FakeStorage>();
   }
 
-  const std::function<void(Storage&)> kNoop = [](Storage&) {};
+  const std::function<void(Storage &)> kNoop = [](Storage&)
+  {
+  };
 
   // Parks the writer thread until open(): entered proves the task is running.
   struct Gate
   {
-    std::function<void(Storage&)> task()
+    std::function<void(Storage &)> task()
     {
-      return [this](Storage&) {
+      return [this](Storage&)
+      {
         entered.set_value();
         released.wait();
       };
@@ -124,7 +138,7 @@ namespace
   // the io_context (done()).
   struct Signal
   {
-    std::function<void(Storage&)> task()
+    std::function<void(Storage &)> task()
     {
       return [promise = promise](Storage&) { promise->set_value(); };
     }
@@ -158,8 +172,8 @@ namespace cipple::storage
     StorageWriter writer{fake_storage(), fake_storage(), {2, kRoomyBytes, 8}};
     Gate gate;
     ASSERT_TRUE(writer.submit(_io, gate.task()));
-    ASSERT_TRUE(gate.wait_entered());        // the running task still occupies its slot
-    ASSERT_TRUE(writer.submit(_io, kNoop));  // second and last request slot
+    ASSERT_TRUE(gate.wait_entered()); // the running task still occupies its slot
+    ASSERT_TRUE(writer.submit(_io, kNoop)); // second and last request slot
     EXPECT_FALSE(writer.submit(_io, kNoop));
     gate.open();
   }
@@ -172,7 +186,7 @@ namespace cipple::storage
     ASSERT_TRUE(gate.wait_entered());
     ASSERT_TRUE(writer.submit(_io, kNoop, {}, 700'000));
     EXPECT_FALSE(writer.submit(_io, kNoop, {}, 400'000));
-    ASSERT_TRUE(writer.submit(_io, kNoop, {}, 348'576));   // exactly the 1 MiB budget
+    ASSERT_TRUE(writer.submit(_io, kNoop, {}, 348'576)); // exactly the 1 MiB budget
     EXPECT_FALSE(writer.submit(_io, kNoop, {}, 1));
     gate.open();
   }
@@ -229,7 +243,7 @@ namespace cipple::storage
     writer.stop();
     EXPECT_TRUE(t1.wait());
     EXPECT_TRUE(t2.wait());
-    EXPECT_EQ(_io.poll(), 2u);               // both dones were already posted
+    EXPECT_EQ(_io.poll(), 2u); // both dones were already posted
     EXPECT_TRUE(d1.wait());
     EXPECT_TRUE(d2.wait());
     EXPECT_FALSE(writer.submit(_io, kNoop));

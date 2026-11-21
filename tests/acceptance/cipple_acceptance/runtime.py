@@ -9,6 +9,7 @@ import threading
 import time
 from pathlib import Path
 
+
 def candidate_env(bin_path: Path | None = None) -> dict[str, str]:
     env = os.environ.copy()
     if bin_path is not None:

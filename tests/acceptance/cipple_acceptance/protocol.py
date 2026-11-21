@@ -67,16 +67,16 @@ def frame(msg_type: int, msg_id: uuid.UUID, fields: bytes = b"") -> bytes:
 
 
 def encode_entity(
-    msg_id: uuid.UUID,
-    op: str,
-    application: bytes,
-    key: bytes,
-    *,
-    value: bytes | None = None,
-    base: uuid.UUID | None = None,
-    atomic: str | None = None,
-    hlc: int = 0,
-    server_id: int = 0,
+        msg_id: uuid.UUID,
+        op: str,
+        application: bytes,
+        key: bytes,
+        *,
+        value: bytes | None = None,
+        base: uuid.UUID | None = None,
+        atomic: str | None = None,
+        hlc: int = 0,
+        server_id: int = 0,
 ) -> bytes:
     out = msg_id.bytes + _str(op.encode("ascii")) + _str(application) + _str(key)
     if op == OP_UPDATE:
@@ -101,7 +101,7 @@ class Reader:
     def take(self, size: int) -> bytes:
         if size < 0 or self.remaining() < size:
             raise ProtocolError("truncated field")
-        chunk = self.data[self.pos : self.pos + size]
+        chunk = self.data[self.pos: self.pos + size]
         self.pos += size
         return chunk
 
@@ -186,11 +186,11 @@ def get_request(msg_id: uuid.UUID, application: bytes, key: bytes) -> bytes:
 
 
 def subscribe_request(
-    msg_id: uuid.UUID,
-    application: bytes,
-    key: bytes,
-    *,
-    resume_after: int | None = None,
+        msg_id: uuid.UUID,
+        application: bytes,
+        key: bytes,
+        *,
+        resume_after: int | None = None,
 ) -> bytes:
     cursor = -1 if resume_after is None else resume_after
     return frame(SUBSCRIBE_REQUEST, msg_id, _str(application) + _str(key) + _i64(cursor))
@@ -201,12 +201,12 @@ def unsubscribe_request(msg_id: uuid.UUID, application: bytes, key: bytes) -> by
 
 
 def incremental_request(
-    msg_id: uuid.UUID,
-    application: bytes,
-    key: bytes,
-    base: uuid.UUID,
-    atomic: str,
-    value: bytes,
+        msg_id: uuid.UUID,
+        application: bytes,
+        key: bytes,
+        base: uuid.UUID,
+        atomic: str,
+        value: bytes,
 ) -> bytes:
     fields = _str(application) + _str(key) + base.bytes + _str(atomic.encode("ascii")) + _str(value)
     return frame(INCREMENTAL_REQUEST, msg_id, fields)

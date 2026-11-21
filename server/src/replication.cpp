@@ -42,14 +42,14 @@ namespace cipple::server
     using message::MessageType;
     using Clock = std::chrono::steady_clock;
 
-    constexpr std::size_t kMaxInFlight = 64;       // 每条会话上未回执的 SyncRequest 上限
-    constexpr std::size_t kMaxStaged = 2048;      // 已装载的待发、在途、退避和待确认记录上限
-    constexpr std::size_t kMaxDeferred = 64;      // 拒绝后退避的消息上限
-    constexpr std::size_t kMaxUndeliverable = 64;  // 记住的超帧消息上限
-    constexpr std::size_t kMaxAwaitingAck = 256;  // 在途与已收到回执的待落盘记录合计上限
-    constexpr std::size_t kAckBatch = 32;         // 一次 FULL 事务里合并的确认数
-    constexpr int kMaxPendingPages = 4;           // 一轮泵最多越过的索引页
-    constexpr std::int64_t kFetchBatch = 256;      // 单页 pending id 数
+    constexpr std::size_t kMaxInFlight = 64; // 每条会话上未回执的 SyncRequest 上限
+    constexpr std::size_t kMaxStaged = 2048; // 已装载的待发、在途、退避和待确认记录上限
+    constexpr std::size_t kMaxDeferred = 64; // 拒绝后退避的消息上限
+    constexpr std::size_t kMaxUndeliverable = 64; // 记住的超帧消息上限
+    constexpr std::size_t kMaxAwaitingAck = 256; // 在途与已收到回执的待落盘记录合计上限
+    constexpr std::size_t kAckBatch = 32; // 一次 FULL 事务里合并的确认数
+    constexpr int kMaxPendingPages = 4; // 一轮泵最多越过的索引页
+    constexpr std::int64_t kFetchBatch = 256; // 单页 pending id 数
     constexpr auto kPollInterval = std::chrono::milliseconds{250};
     constexpr auto kHeartbeatInterval = std::chrono::seconds{2};
     constexpr unsigned kMaxMissedBeats = 3;
@@ -70,7 +70,6 @@ namespace cipple::server
       std::vector<Uuid> ids;
       std::atomic<State> state{State::kWriting};
     };
-
   }
 
   struct Replication::Peer
@@ -78,7 +77,7 @@ namespace cipple::server
     struct Outbound
     {
       Uuid message_uuid;
-      unsigned attempts = 0;   // 驱动该消息的重发超时/退避
+      unsigned attempts = 0; // 驱动该消息的重发超时/退避
     };
 
     struct Deferred
@@ -105,12 +104,12 @@ namespace cipple::server
     const std::int32_t id;
     const asio::ip::tcp::endpoint endpoint;
     std::shared_ptr<tcp::Connector> connector;
-    std::shared_ptr<tcp::Session> session;          // 仅连接期间非空
-    std::deque<Outbound> backlog;                   // 立即可发，按 pending 序
-    std::deque<Deferred> deferred;                  // 被拒后按退避时间挂起
-    std::unordered_map<Uuid, InFlight> in_flight;   // 已发出、等待 SyncResponse
-    std::unordered_set<Uuid> staged;                // backlog ∪ deferred ∪ in_flight ∪ pending_acks
-    std::unordered_set<Uuid> undeliverable;         // 超帧：有界记忆，超出后靠游标跳过
+    std::shared_ptr<tcp::Session> session; // 仅连接期间非空
+    std::deque<Outbound> backlog; // 立即可发，按 pending 序
+    std::deque<Deferred> deferred; // 被拒后按退避时间挂起
+    std::unordered_map<Uuid, InFlight> in_flight; // 已发出、等待 SyncResponse
+    std::unordered_set<Uuid> staged; // backlog ∪ deferred ∪ in_flight ∪ pending_acks
+    std::unordered_set<Uuid> undeliverable; // 超帧：有界记忆，超出后靠游标跳过
     std::optional<storage::PendingCursor> scan_cursor;
     bool scan_exhausted = false;
     std::deque<Uuid> pending_acks;
@@ -136,7 +135,8 @@ namespace cipple::server
                                                   std::vector<PeerAddress> peers)
   {
     auto replication = std::shared_ptr<Replication>{
-      new Replication{context, reads, writer, node_id, std::move(peers)}};
+      new Replication{context, reads, writer, node_id, std::move(peers)}
+    };
     replication->open_peers();
     return replication;
   }
@@ -207,20 +207,23 @@ namespace cipple::server
     {
       Peer& peer = *entry;
       const tcp::ConnectorHandlers handlers{
-        .on_connected = [weak = weak_from_this(), &peer](std::shared_ptr<tcp::Session> session) {
+        .on_connected = [weak = weak_from_this(), &peer](std::shared_ptr<tcp::Session> session)
+        {
           if (const auto self = weak.lock())
           {
             self->on_connected(peer, std::move(session));
           }
         },
         .on_message = [weak = weak_from_this(), &peer](tcp::Session& session,
-                                                       std::unique_ptr<message::Message> message) {
+                                                       std::unique_ptr<message::Message> message)
+        {
           if (const auto self = weak.lock())
           {
             self->on_peer_message(peer, session, *message);
           }
         },
-        .on_disconnected = [weak = weak_from_this(), &peer](const boost::system::error_code reason) {
+        .on_disconnected = [weak = weak_from_this(), &peer](const boost::system::error_code reason)
+        {
           if (const auto self = weak.lock())
           {
             self->on_disconnected(peer, reason);
@@ -229,7 +232,8 @@ namespace cipple::server
       };
       peer.connector = tcp::Connector::start(_context, peer.endpoint, handlers);
       peer.poll_timer.expires_after(kPollInterval);
-      peer.poll_timer.async_wait([weak = weak_from_this(), &peer](const boost::system::error_code error) {
+      peer.poll_timer.async_wait([weak = weak_from_this(), &peer](const boost::system::error_code error)
+      {
         if (!error)
         {
           if (const auto self = weak.lock())
@@ -239,7 +243,8 @@ namespace cipple::server
         }
       });
       peer.heartbeat_timer.expires_after(kHeartbeatInterval);
-      peer.heartbeat_timer.async_wait([weak = weak_from_this(), &peer](const boost::system::error_code error) {
+      peer.heartbeat_timer.async_wait([weak = weak_from_this(), &peer](const boost::system::error_code error)
+      {
         if (!error)
         {
           if (const auto self = weak.lock())
@@ -262,7 +267,8 @@ namespace cipple::server
     peer.pump_posted = true;
     try
     {
-      asio::post(_context, [weak = weak_from_this(), &peer] {
+      asio::post(_context, [weak = weak_from_this(), &peer]
+      {
         if (const auto self = weak.lock())
         {
           peer.pump_posted = false;
@@ -291,8 +297,8 @@ namespace cipple::server
         flush_acks(peer);
       }
       if (!peer.scan_exhausted && peer.session && peer.session->is_open()
-          && peer.in_flight.size() < kMaxInFlight
-          && peer.pending_acks.size() + peer.in_flight.size() < kMaxAwaitingAck)
+        && peer.in_flight.size() < kMaxInFlight
+        && peer.pending_acks.size() + peer.in_flight.size() < kMaxAwaitingAck)
       {
         stage_pending(peer);
       }
@@ -421,24 +427,26 @@ namespace cipple::server
     const auto size = std::min(kAckBatch, peer.pending_acks.size());
     batch->ids.assign(peer.pending_acks.begin(), peer.pending_acks.begin() + static_cast<std::ptrdiff_t>(size));
     if (_writer.submit_ack(_context,
-      [batch, node_id = peer.id](storage::Storage& storage) {
-        try
-        {
-          storage.mark_acked_batch(node_id, batch->ids);
-        }
-        catch (...)
-        {
-          batch->state.store(AckBatch::State::kFailed, std::memory_order_release);
-          throw;
-        }
-        batch->state.store(AckBatch::State::kCommitted, std::memory_order_release);
-      },
-      [weak = weak_from_this(), &peer] {
-        if (const auto self = weak.lock())
-        {
-          self->pump(peer);
-        }
-      }))
+                           [batch, node_id = peer.id](storage::Storage& storage)
+                           {
+                             try
+                             {
+                               storage.mark_acked_batch(node_id, batch->ids);
+                             }
+                             catch (...)
+                             {
+                               batch->state.store(AckBatch::State::kFailed, std::memory_order_release);
+                               throw;
+                             }
+                             batch->state.store(AckBatch::State::kCommitted, std::memory_order_release);
+                           },
+                           [weak = weak_from_this(), &peer]
+                           {
+                             if (const auto self = weak.lock())
+                             {
+                               self->pump(peer);
+                             }
+                           }))
     {
       peer.ack_batch = std::move(batch);
     }
@@ -451,9 +459,9 @@ namespace cipple::server
   void Replication::drain(Peer& peer)
   {
     while (peer.session && peer.session->is_open() && !peer.write_blocked
-           && peer.pending_acks.size() + peer.in_flight.size() < kMaxAwaitingAck
-           && peer.in_flight.size() < kMaxInFlight
-           && !peer.backlog.empty())
+      && peer.pending_acks.size() + peer.in_flight.size() < kMaxAwaitingAck
+      && peer.in_flight.size() < kMaxInFlight
+      && !peer.backlog.empty())
     {
       auto outbound = std::move(peer.backlog.front());
       peer.backlog.pop_front();
@@ -485,12 +493,14 @@ namespace cipple::server
         const auto request_uuid = Uuid::generate();
         const message::SyncRequest request{request_uuid, std::move(*entity), _node_id, std::move(base)};
         const auto error = peer.session->async_send(request,
-          [weak = weak_from_this(), &peer](const boost::system::error_code write_error) {
-            if (const auto self = weak.lock())
-            {
-              self->on_written(peer, write_error);
-            }
-          });
+                                                    [weak = weak_from_this(), &peer](
+                                                      const boost::system::error_code write_error)
+                                                    {
+                                                      if (const auto self = weak.lock())
+                                                      {
+                                                        self->on_written(peer, write_error);
+                                                      }
+                                                    });
         if (!error)
         {
           peer.in_flight.emplace(request_uuid,
@@ -505,7 +515,7 @@ namespace cipple::server
           {
             peer.undeliverable.insert(message_uuid);
             std::cerr << "Replication: peer " << peer.id << ": message " << message_uuid.to_string()
-                      << " exceeds the frame limit and stays pending\n";
+              << " exceeds the frame limit and stays pending\n";
           }
           continue;
         }
@@ -617,7 +627,8 @@ namespace cipple::server
         return;
       }
       peer.retry_timer.expires_at(*next);
-      peer.retry_timer.async_wait([weak = weak_from_this(), &peer](const boost::system::error_code error) {
+      peer.retry_timer.async_wait([weak = weak_from_this(), &peer](const boost::system::error_code error)
+      {
         if (!error)
         {
           if (const auto self = weak.lock())
@@ -638,7 +649,7 @@ namespace cipple::server
     {
       peer.failure_reported = true;
       std::cerr << "Replication: peer " << peer.id << " " << operation << " failed: " << error.what()
-                << '\n';
+        << '\n';
     }
   }
 
@@ -786,7 +797,7 @@ namespace cipple::server
       fail(peer, "acknowledge", error);
       return;
     }
-    pump(peer);   // 窗口空出，立即继续
+    pump(peer); // 窗口空出，立即继续
   }
 
   void Replication::on_written(Peer& peer, const boost::system::error_code error) noexcept
@@ -816,7 +827,7 @@ namespace cipple::server
       {
         peer.rejection_reported = true;
         std::cerr << "Replication: peer " << peer.id << " rejected " << peer.rejections_since_report
-                  << " sync message(s); they remain pending\n";
+          << " sync message(s); they remain pending\n";
       }
     }
     else
@@ -838,7 +849,8 @@ namespace cipple::server
     try
     {
       peer.poll_timer.expires_after(kPollInterval);
-      peer.poll_timer.async_wait([weak = weak_from_this(), &peer](const boost::system::error_code error) {
+      peer.poll_timer.async_wait([weak = weak_from_this(), &peer](const boost::system::error_code error)
+      {
         if (!error)
         {
           if (const auto self = weak.lock())
@@ -873,7 +885,7 @@ namespace cipple::server
         {
           // TCP 连着但对端收不到/回不了：判定为连通分区，关会话交给 Connector 重连。
           std::cerr << "Replication: peer " << peer.id << " missed " << peer.missed_beats
-                    << " heartbeats; reconnecting\n";
+            << " heartbeats; reconnecting\n";
           close_session(peer);
         }
         else if (!peer.awaiting_pong)
@@ -899,7 +911,8 @@ namespace cipple::server
     try
     {
       peer.heartbeat_timer.expires_after(kHeartbeatInterval);
-      peer.heartbeat_timer.async_wait([weak = weak_from_this(), &peer](const boost::system::error_code error) {
+      peer.heartbeat_timer.async_wait([weak = weak_from_this(), &peer](const boost::system::error_code error)
+      {
         if (!error)
         {
           if (const auto self = weak.lock())

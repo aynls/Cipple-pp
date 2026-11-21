@@ -49,7 +49,7 @@ namespace cipple::client
     std::function<void(const entity::EntityMessage&)> on_update;
     // When set, handles the delivery in place of on_update. Return true only
     // after accepting the update, so the session can send a successful receipt.
-    std::function<bool(const boost::asio::ip::tcp::endpoint&, const message::DispatchRequest&)> on_delivery{};
+    std::function<bool(const boost::asio::ip::tcp::endpoint &, const message::DispatchRequest &)> on_delivery{};
   };
 
   struct ClientOptions
@@ -71,11 +71,11 @@ namespace cipple::client
     using GetBaseHandler = std::function<void(boost::system::error_code, std::optional<Uuid>)>;
 
     static std::shared_ptr<Client> start(boost::asio::io_context& context,
-                                        const boost::asio::ip::tcp::endpoint& endpoint, ClientHandlers handlers = {});
+                                         const boost::asio::ip::tcp::endpoint& endpoint, ClientHandlers handlers = {});
     // Starts at the first endpoint. A connection failure or loss advances through the list.
     static std::shared_ptr<Client> start_any(boost::asio::io_context& context,
-                                            std::vector<boost::asio::ip::tcp::endpoint> endpoints,
-                                            ClientHandlers handlers = {}, ClientOptions options = {});
+                                             std::vector<boost::asio::ip::tcp::endpoint> endpoints,
+                                             ClientHandlers handlers = {}, ClientOptions options = {});
     ~Client() noexcept;
 
     bool is_connected() const noexcept;
@@ -99,7 +99,7 @@ namespace cipple::client
     void unsubscribe(std::string application_name, std::string key, StatusHandler on_done);
 
   private:
-    using ResponseHandler = std::function<void(boost::system::error_code, const message::Message*)>;
+    using ResponseHandler = std::function<void(boost::system::error_code, const message::Message *)>;
 
     struct PendingResponse
     {
@@ -112,7 +112,7 @@ namespace cipple::client
     Client(boost::asio::io_context& context, ClientHandlers handlers, ClientOptions options);
 
     void get_response(std::string application_name, std::string key,
-                      std::function<void(boost::system::error_code, const message::GetResponse*)> on_done);
+                      std::function<void(boost::system::error_code, const message::GetResponse *)> on_done);
     void send(const message::Message& request, message::MessageType response_type, ResponseHandler on_done,
               std::optional<std::chrono::steady_clock::duration> timeout = std::nullopt);
     void schedule_heartbeat();

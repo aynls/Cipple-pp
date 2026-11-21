@@ -36,10 +36,14 @@ def run_replication_progress(server_bin: Path, _client_bin: Path, work: Path, en
         with closing(sqlite3.connect(peer_db)) as db:
             with db:
                 db.execute("""
-                    CREATE TRIGGER reject_old_replication BEFORE INSERT ON message
-                    WHEN NEW.value = X'6F6C64'
-                    BEGIN SELECT RAISE(ABORT, 'acceptance rejects old version'); END
-                """)
+                           CREATE TRIGGER reject_old_replication
+                               BEFORE INSERT
+                               ON message
+                               WHEN NEW.value = X'6F6C64'
+                           BEGIN
+                               SELECT RAISE(ABORT, 'acceptance rejects old version');
+                           END
+                           """)
 
         launch(source_port, source_db, "--id", "1", "--peers", f"2@127.0.0.1:{peer_port}", "--overlay", "star")
         with closing(Conn("127.0.0.1", source_port)) as writer:

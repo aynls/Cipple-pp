@@ -76,7 +76,7 @@ namespace
     return command == Command::kPut || command == Command::kDelete || command == Command::kIncremental;
   }
 
-  template<typename Integer>
+  template <typename Integer>
   Integer parse_integer(const std::string_view value, const char* error)
   {
     if (!value.empty())
@@ -273,7 +273,8 @@ namespace
       throw std::invalid_argument{"Invalid command or arguments"};
     }
 
-    if ((options.state || options.unsubscribe_after || options.heartbeat_interval) && options.command != Command::kSubscribe)
+    if ((options.state || options.unsubscribe_after || options.heartbeat_interval) && options.command !=
+      Command::kSubscribe)
     {
       throw std::invalid_argument{"--state, --unsubscribe-after and --heartbeat-ms apply to subscriptions"};
     }
@@ -322,13 +323,15 @@ namespace
     bool unsubscribing = false;
     bool finished = false;
 
-    const auto finish = [&](const int status) {
+    const auto finish = [&](const int status)
+    {
       finished = true;
       result = status;
       deadline.cancel();
       context.stop();
     };
-    const auto report_error = [&](const error_code error) {
+    const auto report_error = [&](const error_code error)
+    {
       if (finished)
       {
         return;
@@ -336,12 +339,13 @@ namespace
       if (write_endpoint)
       {
         std::cerr << "Write result unknown for " << request_id->to_string() << " at " << *write_endpoint
-                  << ". Retry with the same --request-id and endpoint. ";
+          << ". Retry with the same --request-id and endpoint. ";
       }
       std::cerr << (error == asio::error::timed_out ? "Request timed out" : error.message()) << '\n';
       finish(1);
     };
-    const auto on_status = [&](const error_code error, const bool success) {
+    const auto on_status = [&](const error_code error, const bool success)
+    {
       if (finished)
       {
         return;
@@ -361,7 +365,8 @@ namespace
         finish(0);
       }
     };
-    const auto unsubscribe = [&] {
+    const auto unsubscribe = [&]
+    {
       if (unsubscribing || finished)
       {
         return;
@@ -372,7 +377,8 @@ namespace
         finish(0);
         return;
       }
-      client->unsubscribe(options.application, options.key, [&](const error_code error, const bool success) {
+      client->unsubscribe(options.application, options.key, [&](const error_code error, const bool success)
+      {
         if (error)
         {
           report_error(error);
@@ -390,13 +396,15 @@ namespace
       });
     };
 
-    deadline.async_wait([&](const error_code error) {
+    deadline.async_wait([&](const error_code error)
+    {
       if (!error)
       {
         report_error(asio::error::timed_out);
       }
     });
-    signals.async_wait([&](const error_code error, const int signal) {
+    signals.async_wait([&](const error_code error, const int signal)
+    {
       if (!error)
       {
         if (watching)
@@ -410,7 +418,8 @@ namespace
       }
     });
 
-    const auto display = [&](const error_code error, const std::optional<std::string>& value) {
+    const auto display = [&](const error_code error, const std::optional<std::string>& value)
+    {
       if (finished)
       {
         return;
@@ -433,7 +442,8 @@ namespace
         finish(0);
       }
     };
-    const auto on_connected = [&] {
+    const auto on_connected = [&]
+    {
       if (finished)
       {
         return;
@@ -457,7 +467,8 @@ namespace
         client->get(options.application, options.key, display);
         break;
       case Command::kGetBase:
-        client->get_base(options.application, options.key, [&](const error_code error, const std::optional<Uuid> base) {
+        client->get_base(options.application, options.key, [&](const error_code error, const std::optional<Uuid> base)
+        {
           display(error, base ? std::make_optional(base->to_string()) : std::nullopt);
         });
         break;
@@ -469,9 +480,12 @@ namespace
                                    options.value, on_status, *request_id);
         break;
       case Command::kSubscribe:
-        const auto cursor = state ? std::make_optional(state->cursor(endpoint_name(*endpoint), options.application, options.key))
-                                  : std::nullopt;
-        client->subscribe(options.application, options.key, [&](const error_code error, const bool success) {
+        const auto cursor = state
+                              ? std::make_optional(
+                                state->cursor(endpoint_name(*endpoint), options.application, options.key))
+                              : std::nullopt;
+        client->subscribe(options.application, options.key, [&](const error_code error, const bool success)
+        {
           if (error)
           {
             if (client->is_connected())
@@ -507,53 +521,64 @@ namespace
     const auto connect_timeout = std::clamp(options.timeout / endpoint_count,
                                             std::chrono::milliseconds{1}, std::chrono::milliseconds{5000});
     client = Client::start_any(context, options.endpoints, {
-      .on_connected = on_connected,
-      .on_disconnected = [&](const error_code error) {
-        if (watching)
-        {
-          std::cerr << "Disconnected: " << error.message() << '\n';
-        }
-      },
-      .on_delivery = [&](const tcp::endpoint& endpoint, const cipple::message::DispatchRequest& dispatch) {
-        if (finished)
-        {
-          return false;
-        }
-        try
-        {
-          const auto& version = dispatch.entity();
-          if (!watching || version.application_name() != options.application || version.key() != options.key)
-          {
-            throw std::runtime_error{"Received a version outside the current subscription"};
-          }
-          const auto accepted = state ? state->accept(endpoint_name(endpoint), dispatch)
-                                      : AcceptedDelivery{true, true, cipple::client::materialize_delivery(dispatch)};
-          if (accepted.first_seen)
-          {
-            if (accepted.current)
-            {
-              std::cout << (accepted.value ? *accepted.value : "<deleted>") << std::endl;
-            }
-            else
-            {
-              std::cerr << "Historical version " << version.uuid().to_string() << '\n';
-            }
-            ++deliveries;
-            if (options.unsubscribe_after && deliveries == *options.unsubscribe_after)
-            {
-              asio::post(context, unsubscribe);
-            }
-          }
-          return true;
-        }
-        catch (const std::exception& error)
-        {
-          std::cerr << "Delivery failed: " << error.what() << '\n';
-          finish(1);
-          return false;
-        }
-      },
-    }, {.request_timeout = options.timeout, .connect_timeout = connect_timeout, .heartbeat_interval = heartbeat_interval});
+                                 .on_connected = on_connected,
+                                 .on_disconnected = [&](const error_code error)
+                                 {
+                                   if (watching)
+                                   {
+                                     std::cerr << "Disconnected: " << error.message() << '\n';
+                                   }
+                                 },
+                                 .on_delivery = [&](const tcp::endpoint& endpoint,
+                                                    const cipple::message::DispatchRequest& dispatch)
+                                 {
+                                   if (finished)
+                                   {
+                                     return false;
+                                   }
+                                   try
+                                   {
+                                     const auto& version = dispatch.entity();
+                                     if (!watching || version.application_name() != options.application || version.key()
+                                       != options.key)
+                                     {
+                                       throw std::runtime_error{"Received a version outside the current subscription"};
+                                     }
+                                     const auto accepted = state
+                                                             ? state->accept(endpoint_name(endpoint), dispatch)
+                                                             : AcceptedDelivery{
+                                                               true, true,
+                                                               cipple::client::materialize_delivery(dispatch)
+                                                             };
+                                     if (accepted.first_seen)
+                                     {
+                                       if (accepted.current)
+                                       {
+                                         std::cout << (accepted.value ? *accepted.value : "<deleted>") << std::endl;
+                                       }
+                                       else
+                                       {
+                                         std::cerr << "Historical version " << version.uuid().to_string() << '\n';
+                                       }
+                                       ++deliveries;
+                                       if (options.unsubscribe_after && deliveries == *options.unsubscribe_after)
+                                       {
+                                         asio::post(context, unsubscribe);
+                                       }
+                                     }
+                                     return true;
+                                   }
+                                   catch (const std::exception& error)
+                                   {
+                                     std::cerr << "Delivery failed: " << error.what() << '\n';
+                                     finish(1);
+                                     return false;
+                                   }
+                                 },
+                               }, {
+                                 .request_timeout = options.timeout, .connect_timeout = connect_timeout,
+                                 .heartbeat_interval = heartbeat_interval
+                               });
     context.run();
     return result;
   }
@@ -569,14 +594,14 @@ int main(const int argc, char** argv)
   catch (const std::invalid_argument& error)
   {
     std::cerr << error.what() << '\n'
-              << "Usage: cipple_client [OPTIONS] PORT|IP:PORT[,IP:PORT...] put APP KEY VALUE\n"
-                 "       cipple_client [OPTIONS] ENDPOINT get|get-base|delete APP KEY\n"
-                 "       cipple_client [OPTIONS] ENDPOINT incremental APP KEY BASE_UUID add_entry|remove_entry VALUE\n"
-                 "       cipple_client [--state DB] [--unsubscribe-after COUNT] ENDPOINT subscribe APP KEY\n"
-                 "Options: --selector ordered|hash, --timeout-ms MS, --verbose\n"
-                 "         --request-id UUID (write on one endpoint)\n"
-                 "         --heartbeat-ms MS (subscribe, defaults to 1000 with --state)\n"
-                 "Ctrl+C unsubscribes on the active subscription connection.\n";
+      << "Usage: cipple_client [OPTIONS] PORT|IP:PORT[,IP:PORT...] put APP KEY VALUE\n"
+      "       cipple_client [OPTIONS] ENDPOINT get|get-base|delete APP KEY\n"
+      "       cipple_client [OPTIONS] ENDPOINT incremental APP KEY BASE_UUID add_entry|remove_entry VALUE\n"
+      "       cipple_client [--state DB] [--unsubscribe-after COUNT] ENDPOINT subscribe APP KEY\n"
+      "Options: --selector ordered|hash, --timeout-ms MS, --verbose\n"
+      "         --request-id UUID (write on one endpoint)\n"
+      "         --heartbeat-ms MS (subscribe, defaults to 1000 with --state)\n"
+      "Ctrl+C unsubscribes on the active subscription connection.\n";
     return 2;
   }
   try

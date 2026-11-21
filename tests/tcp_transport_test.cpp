@@ -77,11 +77,13 @@ namespace
     std::size_t received = 0;
     std::vector<error_code> closes;
     const auto session = Session::start(_listener.accept(),
-      [&](Session& connection, std::unique_ptr<Message> message) {
-        ++received;
-        EXPECT_FALSE(connection.async_send(*message));
-      },
-      [&](error_code reason) { closes.push_back(reason); }, SessionLimits{.max_frame_length = 128});
+                                        [&](Session& connection, std::unique_ptr<Message> message)
+                                        {
+                                          ++received;
+                                          EXPECT_FALSE(connection.async_send(*message));
+                                        },
+                                        [&](error_code reason) { closes.push_back(reason); },
+                                        SessionLimits{.max_frame_length = 128});
 
     asio::write(peer, asio::buffer(first.data(), 2));
     run_for(20ms);
@@ -114,8 +116,10 @@ namespace
     peer.connect(_listener.local_endpoint());
     const PutRequest message{Uuid::generate(), "app", "key", "value"};
     std::vector<error_code> writes;
-    const auto session = Session::start(_listener.accept(), [](Session&, std::unique_ptr<Message>) {}, {},
-      SessionLimits{.max_queued_bytes = 2 * encode_frame(message).size()});
+    const auto session = Session::start(_listener.accept(), [](Session&, std::unique_ptr<Message>)
+                                        {
+                                        }, {},
+                                        SessionLimits{.max_queued_bytes = 2 * encode_frame(message).size()});
     const auto on_written = [&](error_code error) { writes.push_back(error); };
 
     ASSERT_FALSE(session->async_send(message, on_written));
@@ -137,22 +141,34 @@ namespace
     std::vector<std::shared_ptr<Session>> servers;
     std::vector<Uuid> replies;
     std::vector<error_code> disconnects;
-    const auto accept_echo = [&] {
-      _listener.async_accept([&](error_code error, Socket socket) {
+    const auto accept_echo = [&]
+    {
+      _listener.async_accept([&](error_code error, Socket socket)
+      {
         ASSERT_FALSE(error);
         servers.push_back(Session::start(std::move(socket),
-          [](Session& session, std::unique_ptr<Message> message) {
-            EXPECT_FALSE(session.async_send(*message));
-          }));
+                                         [](Session& session, std::unique_ptr<Message> message)
+                                         {
+                                           EXPECT_FALSE(session.async_send(*message));
+                                         }));
       });
     };
 
     accept_echo();
     const auto connector = Connector::start(_io, _listener.local_endpoint(), {
-      .on_connected = [&](std::shared_ptr<Session> session) { clients.push_back(std::move(session)); },
-      .on_message = [&](Session&, std::unique_ptr<Message> message) { replies.push_back(message->uuid()); },
-      .on_disconnected = [&](error_code reason) { disconnects.push_back(reason); },
-    }, {.initial_retry_delay = 20ms, .max_retry_delay = 40ms});
+                                              .on_connected = [&](std::shared_ptr<Session> session)
+                                              {
+                                                clients.push_back(std::move(session));
+                                              },
+                                              .on_message = [&](Session&, std::unique_ptr<Message> message)
+                                              {
+                                                replies.push_back(message->uuid());
+                                              },
+                                              .on_disconnected = [&](error_code reason)
+                                              {
+                                                disconnects.push_back(reason);
+                                              },
+                                            }, {.initial_retry_delay = 20ms, .max_retry_delay = 40ms});
     ASSERT_TRUE(run_until([&] { return clients.size() == 1 && servers.size() == 1; }));
     const PutRequest first{Uuid::generate(), "app", "key", "before"};
     ASSERT_FALSE(clients.front()->async_send(first));

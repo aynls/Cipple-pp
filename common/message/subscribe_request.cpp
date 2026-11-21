@@ -20,7 +20,7 @@ namespace cipple::message
       , _key{std::move(key)}
       , _resume_after{resume_after}
   {
-    if (_resume_after && *_resume_after < 0)
+    if (_resume_after&& * _resume_after<0)
     {
       throw std::invalid_argument{"negative subscription cursor"};
     }
@@ -55,6 +55,6 @@ namespace cipple::message
     auto key = reader.read_string();
     const auto cursor = reader.read_i64();
     const auto resume_after = cursor == kLiveSubscription ? std::nullopt : std::optional{cursor};
-    return std::make_unique<SubscribeRequest>(uuid, std::move(application_name), std::move(key), resume_after);
+    return std::make_unique < SubscribeRequest > (uuid, std::move(application_name), std::move(key), resume_after);
   }
 }

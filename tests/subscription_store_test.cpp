@@ -46,7 +46,7 @@ namespace
     }
 
     const std::filesystem::path _db =
-        std::filesystem::temp_directory_path() / ("cipple-subscription-" + Uuid::generate().to_string() + ".db");
+      std::filesystem::temp_directory_path() / ("cipple-subscription-" + Uuid::generate().to_string() + ".db");
   };
 
   TEST_F(SubscriptionStoreTest, FirstDeliveryIsNewAndCurrent)
@@ -86,7 +86,7 @@ namespace
     int log_frames = -1;
     int checkpointed_frames = -1;
     EXPECT_EQ(sqlite3_wal_checkpoint_v2(observer.get(), "main", SQLITE_CHECKPOINT_TRUNCATE,
-                                         &log_frames, &checkpointed_frames), SQLITE_OK);
+                                        &log_frames, &checkpointed_frames), SQLITE_OK);
     EXPECT_EQ(log_frames, 0);
   }
 
@@ -108,8 +108,10 @@ namespace
     SubscriptionStore store{_db.string()};
     const auto base = update(1, "a-x-x-b");
     ASSERT_TRUE(store.accept("ep", delivery(base, 1)).first_seen);
-    const EntityMessage delta{Uuid::generate(), "app", "key", 2, 1,
-        EntityMessage::IncrementalUpdate{base.uuid(), AtomicOperation::kRemoveEntry, "-x"}};
+    const EntityMessage delta{
+      Uuid::generate(), "app", "key", 2, 1,
+      EntityMessage::IncrementalUpdate{base.uuid(), AtomicOperation::kRemoveEntry, "-x"}
+    };
     const EntityMessage conflicting_base{base.uuid(), "app", "key", 1, 1, EntityMessage::Update{"different"}};
     EXPECT_THROW(store.accept("ep", delivery(delta, 2, conflicting_base)), std::runtime_error);
     EXPECT_EQ(store.cursor("ep", "app", "key"), 1);
@@ -123,8 +125,10 @@ namespace
   {
     SubscriptionStore store{_db.string()};
     const auto base = update(1, "a-x-x-b");
-    const EntityMessage delta{Uuid::generate(), "app", "key", 2, 1,
-        EntityMessage::IncrementalUpdate{base.uuid(), AtomicOperation::kRemoveEntry, "-x"}};
+    const EntityMessage delta{
+      Uuid::generate(), "app", "key", 2, 1,
+      EntityMessage::IncrementalUpdate{base.uuid(), AtomicOperation::kRemoveEntry, "-x"}
+    };
     const auto accepted = store.accept("ep", delivery(delta, 1, base));
     EXPECT_TRUE(accepted.first_seen);
     ASSERT_TRUE(accepted.value);
@@ -134,8 +138,10 @@ namespace
   TEST_F(SubscriptionStoreTest, IncrementWithWrongBaseFails)
   {
     SubscriptionStore store{_db.string()};
-    const EntityMessage delta{Uuid::generate(), "app", "key", 2, 1,
-        EntityMessage::IncrementalUpdate{Uuid::generate(), AtomicOperation::kAddEntry, "x"}};
+    const EntityMessage delta{
+      Uuid::generate(), "app", "key", 2, 1,
+      EntityMessage::IncrementalUpdate{Uuid::generate(), AtomicOperation::kAddEntry, "x"}
+    };
     EXPECT_THROW(store.accept("ep", delivery(delta, 1, update(1, "other"))), std::runtime_error);
     EXPECT_EQ(store.cursor("ep", "app", "key"), 0);
   }

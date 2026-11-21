@@ -36,12 +36,12 @@ namespace cipple::tcp
   {
   public:
     static std::shared_ptr<Connector> start(boost::asio::io_context& context,
-                                           boost::asio::ip::tcp::endpoint endpoint,
-                                           ConnectorHandlers handlers, ConnectorOptions options = {});
+                                            boost::asio::ip::tcp::endpoint endpoint,
+                                            ConnectorHandlers handlers, ConnectorOptions options = {});
     // Tries endpoints in the supplied order, rotating after failures.
     static std::shared_ptr<Connector> start_any(boost::asio::io_context& context,
-                                               std::vector<boost::asio::ip::tcp::endpoint> endpoints,
-                                               ConnectorHandlers handlers, ConnectorOptions options = {});
+                                                std::vector<boost::asio::ip::tcp::endpoint> endpoints,
+                                                ConnectorHandlers handlers, ConnectorOptions options = {});
     ~Connector() noexcept;
 
     const boost::asio::ip::tcp::endpoint& endpoint() const noexcept;
@@ -59,7 +59,7 @@ namespace cipple::tcp
     };
 
     Connector(boost::asio::io_context& context, std::vector<boost::asio::ip::tcp::endpoint> endpoints,
-               ConnectorHandlers handlers, ConnectorOptions options);
+              ConnectorHandlers handlers, ConnectorOptions options);
 
     void connect();
     void on_connect(std::uint64_t attempt, boost::system::error_code error);

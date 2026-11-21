@@ -28,9 +28,11 @@ namespace cipple::bench
     const auto reps = arg_count(args, "--reps", 100);
     const auto value_bytes = arg_count(args, "--value-bytes", 256);
 
-    const entity::EntityMessage entity{Uuid::generate(), "bench-app", "bench-key",
-                                       1'700'000'000'000, 1,
-                                       entity::EntityMessage::Update{std::string(value_bytes, 'x')}};
+    const entity::EntityMessage entity{
+      Uuid::generate(), "bench-app", "bench-key",
+      1'700'000'000'000, 1,
+      entity::EntityMessage::Update{std::string(value_bytes, 'x')}
+    };
     const message::DispatchRequest dispatch{Uuid::generate(), entity, 7};
 
     volatile std::size_t sink = 0;

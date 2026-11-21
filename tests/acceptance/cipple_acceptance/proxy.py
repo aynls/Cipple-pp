@@ -58,7 +58,8 @@ class DropPlan:
             elif msg_type == SYNC_RESPONSE and len(body) >= 18 and rpc is not None:
                 result = body[17]
                 detail = f"result={result}"
-                if self.drop_first and rpc in self.rpc_ids and result in (0, 1) and self.dropped == 0 and not self.refusing:
+                if self.drop_first and rpc in self.rpc_ids and result in (0,
+                                                                          1) and self.dropped == 0 and not self.refusing:
                     drop = True
             if drop:
                 self.dropped += 1
@@ -182,7 +183,7 @@ class Proxy:
                         break
                     raw = buf[: 4 + length]
                     body = raw[4:]
-                    buf = buf[4 + length :]
+                    buf = buf[4 + length:]
                     drop = self.plan.consider(self.name, direction, body) if self.plan else False
                     if drop or self.snapshot_refusing():
                         if drop:

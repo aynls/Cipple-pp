@@ -26,7 +26,7 @@ def enc_str(b: bytearray, s: str):
 def dec_str(buf: bytes, pos: int):
     (n,) = struct.unpack_from(">Q", buf, pos)
     pos += 8
-    s = buf[pos : pos + n].decode()
+    s = buf[pos: pos + n].decode()
     return s, pos + n
 
 
@@ -52,7 +52,7 @@ def recv_frame(sock: socket.socket):
 
 
 def parse_entity(buf: bytes, pos: int):
-    euuid = buf[pos : pos + 16]
+    euuid = buf[pos: pos + 16]
     pos += 16
     op, pos = dec_str(buf, pos)
     app, pos = dec_str(buf, pos)
@@ -61,7 +61,7 @@ def parse_entity(buf: bytes, pos: int):
     if op == "update":
         val, pos = dec_str(buf, pos)
     elif op == "incremental_update":
-        base = buf[pos : pos + 16]
+        base = buf[pos: pos + 16]
         pos += 16
         atomic, pos = dec_str(buf, pos)
         val, pos = dec_str(buf, pos)
@@ -149,8 +149,8 @@ def main():
         "--persist-sqlite",
         default=None,
         help="DIR for per-subscriber SQLite persistence (durable+persist profile). "
-        "Each subscriber commits INSERT OR IGNORE on msg_uuid before t_recv/ACK. "
-        "Use --resume-after to measure durable delivery.",
+             "Each subscriber commits INSERT OR IGNORE on msg_uuid before t_recv/ACK. "
+             "Use --resume-after to measure durable delivery.",
     )
     ap.add_argument("--timeout", type=int, default=30)
     a = ap.parse_args()

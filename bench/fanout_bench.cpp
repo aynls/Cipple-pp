@@ -26,7 +26,10 @@ namespace
   // 模拟订阅者侧：只读帧并计数到达字节，达到当次配额即记录完成时刻。
   struct Client
   {
-    explicit Client(asio::io_context& io) : socket(io) {}
+    explicit Client(asio::io_context& io) : socket(io)
+    {
+    }
+
     asio::ip::tcp::socket socket;
     std::array<char, 64 * 1024> buffer{};
     std::size_t quota = 0;
@@ -58,9 +61,11 @@ namespace cipple::bench
     const auto warmup = arg_count(args, "--warmup", 5);
     const auto value_bytes = arg_count(args, "--value-bytes", 256);
 
-    const entity::EntityMessage entity{Uuid::generate(), "bench-app", "bench-key",
-                                       1'700'000'000'000, 1,
-                                       entity::EntityMessage::Update{std::string(value_bytes, 'x')}};
+    const entity::EntityMessage entity{
+      Uuid::generate(), "bench-app", "bench-key",
+      1'700'000'000'000, 1,
+      entity::EntityMessage::Update{std::string(value_bytes, 'x')}
+    };
     const message::DispatchRequest dispatch{Uuid::generate(), entity, 7};
     const auto frame_size = tcp::encode_frame(dispatch).size();
 
@@ -78,9 +83,11 @@ namespace cipple::bench
       clients.push_back(std::make_unique<Client>(client_io));
     }
 
-    std::function<void(Client&)> read_next;
-    read_next = [&](Client& c) {
-      c.socket.async_read_some(asio::buffer(c.buffer), [&](boost::system::error_code ec, std::size_t n) {
+    std::function < void(Client &) > read_next;
+    read_next = [&](Client& c)
+    {
+      c.socket.async_read_some(asio::buffer(c.buffer), [&](boost::system::error_code ec, std::size_t n)
+      {
         if (ec)
         {
           ++c.errors;
@@ -99,7 +106,8 @@ namespace cipple::bench
     for (std::size_t i = 0; i < subs; ++i)
     {
       Client& c = *clients[i];
-      c.socket.async_connect(endpoint, [&](boost::system::error_code ec) {
+      c.socket.async_connect(endpoint, [&](boost::system::error_code ec)
+      {
         if (ec)
         {
           ++c.errors;
@@ -108,13 +116,16 @@ namespace cipple::bench
         read_next(c);
         connected.fetch_add(1, std::memory_order::release);
       });
-      acceptor.async_accept([&](boost::system::error_code ec, asio::ip::tcp::socket socket) {
+      acceptor.async_accept([&](boost::system::error_code ec, asio::ip::tcp::socket socket)
+      {
         if (ec)
         {
           return;
         }
         sessions.push_back(tcp::Session::start(std::move(socket),
-                                               [](tcp::Session&, std::unique_ptr<message::Message>) {}));
+                                               [](tcp::Session&, std::unique_ptr<message::Message>)
+                                               {
+                                               }));
         accepted.fetch_add(1, std::memory_order::release);
       });
     }
@@ -122,7 +133,7 @@ namespace cipple::bench
     std::thread server_thread{[&] { server_io.run(); }};
     std::thread client_thread{[&] { client_io.run(); }};
     while (connected.load(std::memory_order::acquire) < subs ||
-           accepted.load(std::memory_order::acquire) < subs)
+      accepted.load(std::memory_order::acquire) < subs)
     {
       std::this_thread::yield();
     }
@@ -147,7 +158,8 @@ namespace cipple::bench
         std::atomic<bool> enqueued{false};
         Clock::time_point start;
         double enq_us = 0;
-        asio::post(server_io, [&] {
+        asio::post(server_io, [&]
+        {
           start = Clock::now();
           if (variant == 0)
           {

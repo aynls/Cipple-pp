@@ -83,7 +83,7 @@ namespace cipple::server
     std::size_t entity_size(const EntityMessage& message) noexcept
     {
       auto size = 16 + 3 * 8 + 8 + 4 + entity::operation_type_wire_name(message.operation_type()).size()
-          + message.application_name().size() + message.key().size();
+        + message.application_name().size() + message.key().size();
       if (const auto* full = std::get_if<EntityMessage::Update>(&message.payload()))
       {
         size += 8 + full->value.size();
@@ -107,7 +107,7 @@ namespace cipple::server
       {
         const auto* full = base ? std::get_if<EntityMessage::Update>(&base->payload()) : nullptr;
         if (!full || base->uuid() != delta->base_message_uuid || base->application_name() != message.application_name()
-            || base->key() != message.key() || version_order(*base) >= version_order(message))
+          || base->key() != message.key() || version_order(*base) >= version_order(message))
         {
           return false;
         }
@@ -174,7 +174,7 @@ namespace cipple::server
     for (const auto& member : options.peers)
     {
       if (member.id <= 0 || member.id == _node_id || member.endpoint.port() == 0 ||
-          std::ranges::find(_peer_ids, member.id) != _peer_ids.end())
+        std::ranges::find(_peer_ids, member.id) != _peer_ids.end())
       {
         throw std::invalid_argument{"invalid or duplicate peer in cluster membership"};
       }
@@ -217,7 +217,8 @@ namespace cipple::server
   void Server::accept_next()
   {
     _acceptor.async_accept([weak = weak_from_this()](const boost::system::error_code error,
-                                                     asio::ip::tcp::socket socket) {
+                                                     asio::ip::tcp::socket socket)
+    {
       if (const auto self = weak.lock(); self && self->_acceptor.is_open())
       {
         if (error)
@@ -236,29 +237,32 @@ namespace cipple::server
     const auto id = ++_next_connection_id;
     const auto weak = weak_from_this();
     auto session = tcp::Session::start(std::move(socket),
-      [weak, id](tcp::Session& connection, std::unique_ptr<message::Message> message) {
-        if (const auto self = weak.lock())
-        {
-          self->on_message(id, connection, *message);
-        }
-      },
-      [weak, id](boost::system::error_code) {
-        if (const auto self = weak.lock())
-        {
-          self->_subscriptions->detach(id);
-        }
-      });
+                                       [weak, id](tcp::Session& connection, std::unique_ptr<message::Message> message)
+                                       {
+                                         if (const auto self = weak.lock())
+                                         {
+                                           self->on_message(id, connection, *message);
+                                         }
+                                       },
+                                       [weak, id](boost::system::error_code)
+                                       {
+                                         if (const auto self = weak.lock())
+                                         {
+                                           self->_subscriptions->detach(id);
+                                         }
+                                       });
     _subscriptions->attach(id, std::move(session));
   }
 
-  template<typename Response, typename Request>
+  template <typename Response, typename Request>
   void Server::write(tcp::Session& session, const Request& request, EntityMessage::Payload payload)
   {
     const auto request_id = request.uuid();
     const auto outcome = std::make_shared<WriteOutcome>(WriteOutcome{
       .key = {request.application_name(), request.key()},
     });
-    const auto value_bytes = std::visit([](const auto& operation) -> std::size_t {
+    const auto value_bytes = std::visit([](const auto& operation) -> std::size_t
+    {
       if constexpr (requires { operation.value; })
       {
         return operation.value.size();
@@ -266,52 +270,57 @@ namespace cipple::server
       return 0;
     }, payload);
     const auto charge = sizeof(WriteOutcome) + 2 * (outcome->key.first.size() + outcome->key.second.size())
-                       + value_bytes + _peer_ids.size() * sizeof(std::int32_t);
+      + value_bytes + _peer_ids.size() * sizeof(std::int32_t);
     const bool accepted = _storage->submit(_context,
-      [clock = _clock, node_id = _node_id, peers = _peer_ids, request_id,
-       payload = std::move(payload), outcome](storage::Storage& store) mutable {
-        try
-        {
-          // An accepted retry must have the same operation and payload.
-          const auto previous = store.find_message(request_id);
-          if (previous)
-          {
-            outcome->success = previous->application_name() == outcome->key.first
-                            && previous->key() == outcome->key.second && previous->payload() == payload;
-            return;
-          }
-          if (previous.error() != storage::MessageUnavailable::kMissing)
-          {
-            return;
-          }
-          auto& version = outcome->version.emplace(request_id, outcome->key.first, outcome->key.second,
-                                                   clock->tick(), node_id, std::move(payload));
-          if (fits_read_response(version, lookup_base(store, version)))
-          {
-            const auto receipt = store.append_with_outcome(version, peers);
-            outcome->success = receipt.result == storage::AppendResult::kInserted;
-            outcome->is_current = receipt.is_current;
-          }
-        }
-        catch (const std::exception& error)
-        {
-          outcome->error = error.what();
-        }
-      },
-      [weak = weak_from_this(), session = session.weak_from_this(), request_id, outcome] {
-        if (const auto self = weak.lock(); self && self->_acceptor.is_open())
-        {
-          const auto recipient = session.lock();
-          self->finish_write<Response>(recipient.get(), request_id, *outcome);
-        }
-      }, charge);
+                                           [clock = _clock, node_id = _node_id, peers = _peer_ids, request_id,
+                                             payload = std::move(payload), outcome](storage::Storage& store) mutable
+                                           {
+                                             try
+                                             {
+                                               // An accepted retry must have the same operation and payload.
+                                               const auto previous = store.find_message(request_id);
+                                               if (previous)
+                                               {
+                                                 outcome->success = previous->application_name() == outcome->key.first
+                                                   && previous->key() == outcome->key.second && previous->payload() ==
+                                                   payload;
+                                                 return;
+                                               }
+                                               if (previous.error() != storage::MessageUnavailable::kMissing)
+                                               {
+                                                 return;
+                                               }
+                                               auto& version = outcome->version.emplace(
+                                                 request_id, outcome->key.first, outcome->key.second,
+                                                 clock->tick(), node_id, std::move(payload));
+                                               if (fits_read_response(version, lookup_base(store, version)))
+                                               {
+                                                 const auto receipt = store.append_with_outcome(version, peers);
+                                                 outcome->success = receipt.result == storage::AppendResult::kInserted;
+                                                 outcome->is_current = receipt.is_current;
+                                               }
+                                             }
+                                             catch (const std::exception& error)
+                                             {
+                                               outcome->error = error.what();
+                                             }
+                                           },
+                                           [weak = weak_from_this(), session = session.weak_from_this(), request_id,
+                                             outcome]
+                                           {
+                                             if (const auto self = weak.lock(); self && self->_acceptor.is_open())
+                                             {
+                                               const auto recipient = session.lock();
+                                               self->finish_write<Response>(recipient.get(), request_id, *outcome);
+                                             }
+                                           }, charge);
     if (!accepted)
     {
       send(session, Response{request_id, false});
     }
   }
 
-  template<typename Response>
+  template <typename Response>
   void Server::finish_write(tcp::Session* session, const Uuid& request_id, WriteOutcome& outcome)
   {
     if (outcome.error)
@@ -365,8 +374,10 @@ namespace cipple::server
       }
       versions.push_back(std::move(*latest));
     }
-    send(session, message::GetResponse{request.uuid(), request.application_name(), request.key(),
-                                      std::move(value), std::move(versions)});
+    send(session, message::GetResponse{
+           request.uuid(), request.application_name(), request.key(),
+           std::move(value), std::move(versions)
+         });
   }
 
   void Server::sync(tcp::Session& session, const message::SyncRequest& request)
@@ -374,7 +385,8 @@ namespace cipple::server
     using message::Result;
     const auto& version = request.entity();
     const auto origin = version.last_update_server_id();
-    const auto configured = [this](const std::int32_t id) {
+    const auto configured = [this](const std::int32_t id)
+    {
       return std::ranges::find(_peer_ids, id) != _peer_ids.end();
     };
     if (!configured(request.from_id()) || (origin != _node_id && !configured(origin)))
@@ -402,55 +414,61 @@ namespace cipple::server
       .base = request.base(),
     });
     const auto charge = sizeof(SyncOutcome) + entity_size(version)
-                      + outcome->key.first.size() + outcome->key.second.size()
-                      + (outcome->base ? entity_size(*outcome->base) : 0) + targets.capacity() * sizeof(std::int32_t);
+      + outcome->key.first.size() + outcome->key.second.size()
+      + (outcome->base ? entity_size(*outcome->base) : 0) + targets.capacity() * sizeof(std::int32_t);
     const bool notify = !targets.empty();
     const bool accepted = _storage->submit(_context,
-      [clock = _clock, targets = std::move(targets), outcome](storage::Storage& store) {
-        try
-        {
-          const auto& version = outcome->version;
-          const bool supplied = outcome->base.has_value();
-          const auto existing = store.find_message(version.uuid());
-          if (existing || existing.error() == storage::MessageUnavailable::kRecycled)
-          {
-            bool identical = existing && *existing == version;
-            if (identical && supplied)
-            {
-              const auto stored_base = lookup_base(store, version);
-              identical = stored_base == outcome->base;
-            }
-            outcome->result = identical ? Result::kDuplicated : Result::kRejected;
-            return;
-          }
+                                           [clock = _clock, targets = std::move(targets), outcome](
+                                             storage::Storage& store)
+                                           {
+                                             try
+                                             {
+                                               const auto& version = outcome->version;
+                                               const bool supplied = outcome->base.has_value();
+                                               const auto existing = store.find_message(version.uuid());
+                                               if (existing || existing.error() ==
+                                                 storage::MessageUnavailable::kRecycled)
+                                               {
+                                                 bool identical = existing && *existing == version;
+                                                 if (identical && supplied)
+                                                 {
+                                                   const auto stored_base = lookup_base(store, version);
+                                                   identical = stored_base == outcome->base;
+                                                 }
+                                                 outcome->result = identical ? Result::kDuplicated : Result::kRejected;
+                                                 return;
+                                               }
 
-          if (!fits_read_response(version, outcome->base))
-          {
-            return;
-          }
-          auto next_clock = *clock;
-          next_clock.observe(version.last_update());
-          const auto receipt = store.append_with_outcome(version, targets, supplied ? &*outcome->base : nullptr);
-          if (receipt.result != storage::AppendResult::kInserted)
-          {
-            return;
-          }
-          *clock = next_clock;
-          outcome->is_current = receipt.is_current;
-          outcome->result = Result::kSuccess;
-        }
-        catch (const std::exception& error)
-        {
-          outcome->error = error.what();
-        }
-      },
-      [weak = weak_from_this(), session = session.weak_from_this(), request_id = request.uuid(), notify, outcome] {
-        if (const auto self = weak.lock(); self && self->_acceptor.is_open())
-        {
-          const auto recipient = session.lock();
-          self->finish_sync(recipient.get(), request_id, notify, *outcome);
-        }
-      }, charge);
+                                               if (!fits_read_response(version, outcome->base))
+                                               {
+                                                 return;
+                                               }
+                                               auto next_clock = *clock;
+                                               next_clock.observe(version.last_update());
+                                               const auto receipt = store.append_with_outcome(
+                                                 version, targets, supplied ? &*outcome->base : nullptr);
+                                               if (receipt.result != storage::AppendResult::kInserted)
+                                               {
+                                                 return;
+                                               }
+                                               *clock = next_clock;
+                                               outcome->is_current = receipt.is_current;
+                                               outcome->result = Result::kSuccess;
+                                             }
+                                             catch (const std::exception& error)
+                                             {
+                                               outcome->error = error.what();
+                                             }
+                                           },
+                                           [weak = weak_from_this(), session = session.weak_from_this(), request_id =
+                                             request.uuid(), notify, outcome]
+                                           {
+                                             if (const auto self = weak.lock(); self && self->_acceptor.is_open())
+                                             {
+                                               const auto recipient = session.lock();
+                                               self->finish_sync(recipient.get(), request_id, notify, *outcome);
+                                             }
+                                           }, charge);
     if (!accepted)
     {
       send(session, message::SyncResponse{request.uuid(), Result::kRejected});
@@ -494,7 +512,8 @@ namespace cipple::server
     }
     try
     {
-      asio::post(_context, [weak = weak_from_this()] {
+      asio::post(_context, [weak = weak_from_this()]
+      {
         if (const auto self = weak.lock(); self && self->_acceptor.is_open())
         {
           self->_replay_scheduled = false;
@@ -513,7 +532,8 @@ namespace cipple::server
   void Server::check_delivery_deadlines()
   {
     _delivery_timer.expires_after(kDeliveryCheckInterval);
-    _delivery_timer.async_wait([weak = weak_from_this()](const boost::system::error_code error) {
+    _delivery_timer.async_wait([weak = weak_from_this()](const boost::system::error_code error)
+    {
       if (const auto self = weak.lock(); self && !error && self->_acceptor.is_open())
       {
         self->_subscriptions->expire();
@@ -542,7 +562,9 @@ namespace cipple::server
         {
           const auto& request = static_cast<const message::IncrementalUpdateRequest&>(message);
           write<message::IncrementalUpdateResponse>(session, request, EntityMessage::IncrementalUpdate{
-              request.base_message_uuid(), request.atomic_operation(), request.value()});
+                                                      request.base_message_uuid(), request.atomic_operation(),
+                                                      request.value()
+                                                    });
           break;
         }
       case MessageType::kGetRequest:

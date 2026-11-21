@@ -73,7 +73,8 @@ namespace
       per_sub.assign(subs, 0);
       for (std::size_t i = 0; i < subs; ++i)
       {
-        connect(endpoint, [this, i](std::shared_ptr<Session> s) {
+        connect(endpoint, [this, i](std::shared_ptr<Session> s)
+        {
           sub_sessions.push_back(s);
           if (s->async_send(cipple::message::SubscribeRequest{Uuid::generate(), app, key, resume_after}))
           {
@@ -81,7 +82,8 @@ namespace
           }
         });
       }
-      connect(endpoint, [this](std::shared_ptr<Session> s) {
+      connect(endpoint, [this](std::shared_ptr<Session> s)
+      {
         pub_session = s;
         pub_up = true;
         maybe_start();
@@ -92,16 +94,19 @@ namespace
                  std::function<void(std::shared_ptr<Session>)> on_up)
     {
       auto socket = std::make_shared<asio::ip::tcp::socket>(io);
-      socket->async_connect(endpoint, [this, socket, on_up = std::move(on_up)](boost::system::error_code ec) {
+      socket->async_connect(endpoint, [this, socket, on_up = std::move(on_up)](boost::system::error_code ec)
+      {
         if (ec)
         {
           ++errors;
           return;
         }
-        on_up(Session::start(std::move(*socket), [this](Session& s, std::unique_ptr<cipple::message::Message> m) {
+        on_up(Session::start(std::move(*socket), [this](Session& s, std::unique_ptr<cipple::message::Message> m)
+                             {
                                on_message(s, *m);
                              },
-                             [this](boost::system::error_code) {
+                             [this](boost::system::error_code)
+                             {
                                if (!finished)
                                {
                                  ++errors;
@@ -115,7 +120,7 @@ namespace
       using cipple::message::MessageType;
       switch (msg.type())
       {
-        case MessageType::kSubscribeResponse:
+      case MessageType::kSubscribeResponse:
         {
           const auto& resp = static_cast<const cipple::message::SubscribeResponse&>(msg);
           if (resp.success())
@@ -129,7 +134,7 @@ namespace
           maybe_start();
           break;
         }
-        case MessageType::kPutResponse:
+      case MessageType::kPutResponse:
         {
           if (!static_cast<const cipple::message::PutResponse&>(msg).success())
           {
@@ -138,7 +143,7 @@ namespace
           ++responses;
           break;
         }
-        case MessageType::kDispatchRequest:
+      case MessageType::kDispatchRequest:
         {
           const auto& d = static_cast<const cipple::message::DispatchRequest&>(msg);
           last_recv = Clock::now();
@@ -157,8 +162,8 @@ namespace
           }
           break;
         }
-        default:
-          break;
+      default:
+        break;
       }
     }
 
@@ -171,7 +176,8 @@ namespace
       started = true;
       wall_start = Clock::now();
       deadline.expires_after(deadline_ms);
-      deadline.async_wait([this](boost::system::error_code ec) {
+      deadline.async_wait([this](boost::system::error_code ec)
+      {
         if (!ec)
         {
           finish();
@@ -198,7 +204,8 @@ namespace
       }
       ++seq;
       pace.expires_after(gap);
-      pace.async_wait([this](boost::system::error_code ec) {
+      pace.async_wait([this](boost::system::error_code ec)
+      {
         if (!ec)
         {
           send_next();
@@ -246,8 +253,8 @@ namespace cipple::bench
     if (server.empty())
     {
       std::fprintf(stderr, "usage: cipple_bench drive --server host:port [--app A] [--key K] "
-                           "[--subs N] [--ops M] [--warmup W] [--gap-ms G] [--value-bytes B] "
-                           "[--resume-after SEQ] [--deadline-ms D]\n");
+                   "[--subs N] [--ops M] [--warmup W] [--gap-ms G] [--value-bytes B] "
+                   "[--resume-after SEQ] [--deadline-ms D]\n");
       return 2;
     }
     const auto colon = server.rfind(':');

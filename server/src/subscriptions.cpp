@@ -103,7 +103,7 @@ namespace cipple::server
   }
 
   void Subscriptions::remove_route(const ConnectionId id, const ConfigKey& key,
-                                  const Subscription& subscription) noexcept
+                                   const Subscription& subscription) noexcept
   {
     if (const auto route = _by_key.find(key); route != _by_key.end())
     {
@@ -122,7 +122,8 @@ namespace cipple::server
   void Subscriptions::acknowledge(const ConnectionId id, const Uuid& reply_id, const bool success)
   {
     auto& subscriptions = _connections.at(id).subscriptions;
-    const auto it = std::ranges::find_if(subscriptions, [&](const auto& entry) {
+    const auto it = std::ranges::find_if(subscriptions, [&](const auto& entry)
+    {
       return entry.second.pending && entry.second.pending->reply_id == reply_id;
     });
     if (it == subscriptions.end())
@@ -140,7 +141,7 @@ namespace cipple::server
     enqueue_replay(id, it->first, *subscription.cursor);
   }
 
-  template<typename Visit>
+  template <typename Visit>
   void Subscriptions::visit_subscribers(const ConfigKey& key, Visit visit) noexcept
   {
     const auto route = _by_key.find(key);
@@ -170,7 +171,8 @@ namespace cipple::server
   {
     tcp::EncodedFrame frame;
     bool encoded = false;
-    visit_subscribers(key, [&](ConnectionId, Connection& connection, const Subscription& subscription) {
+    visit_subscribers(key, [&](ConnectionId, Connection& connection, const Subscription& subscription)
+    {
       if (subscription.cursor)
       {
         return true;
@@ -199,7 +201,8 @@ namespace cipple::server
 
   void Subscriptions::wake(const ConfigKey& key) noexcept
   {
-    visit_subscribers(key, [&](const ConnectionId id, Connection&, const Subscription& subscription) {
+    visit_subscribers(key, [&](const ConnectionId id, Connection&, const Subscription& subscription)
+    {
       if (subscription.cursor && !subscription.pending)
       {
         try
@@ -256,7 +259,7 @@ namespace cipple::server
     }
     auto base = _reader.find_message(delta->base_message_uuid);
     if (!base || !std::holds_alternative<EntityMessage::Update>(base->payload())
-        || base->application_name() != version.application_name() || base->key() != version.key())
+      || base->application_name() != version.application_name() || base->key() != version.key())
     {
       throw std::runtime_error{"stored incremental update has no full base"};
     }
@@ -331,7 +334,8 @@ namespace cipple::server
     for (auto it = _connections.begin(); it != _connections.end();)
     {
       const auto& [id, connection] = *it++;
-      if (std::ranges::any_of(connection.subscriptions, [&](const auto& entry) {
+      if (std::ranges::any_of(connection.subscriptions, [&](const auto& entry)
+      {
         const auto& pending = entry.second.pending;
         return pending && pending->deadline <= now;
       }))

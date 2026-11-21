@@ -90,13 +90,13 @@ namespace cipple::storage
     // Page of unacknowledged targets in version order, strictly after `after`.
     // An empty cursor has no lower bound. A non-positive limit returns nothing.
     virtual std::vector<PendingId> pending_ids_after(std::int32_t node_id, const std::optional<PendingCursor>& after,
-                                                    std::int64_t limit) const = 0;
+                                                     std::int64_t limit) const = 0;
     // One synchronous=FULL transaction. Already-acknowledged ids stay acknowledged and are not counted.
     virtual std::size_t mark_acked_batch(std::int32_t node_id, std::span<const Uuid> message_uuids) = 0;
 
     // Replica-local append order, independent of the version's conflict order.
     virtual std::vector<JournalEntry> journal_after(std::string_view application_name, std::string_view key,
-                                                   std::int64_t after, std::int64_t limit) const = 0;
+                                                    std::int64_t after, std::int64_t limit) const = 0;
     virtual std::int64_t journal_sequence(const Uuid& uuid) const = 0;
     virtual std::int64_t version_watermark() const = 0;
 

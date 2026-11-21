@@ -31,8 +31,10 @@ namespace
 
   EntityMessage increment(const EntityMessage& base, const std::int64_t version)
   {
-    return {Uuid::generate(), "app", "key", version, 1,
-            EntityMessage::IncrementalUpdate{base.uuid(), AtomicOperation::kRemoveEntry, "removed"}};
+    return {
+      Uuid::generate(), "app", "key", version, 1,
+      EntityMessage::IncrementalUpdate{base.uuid(), AtomicOperation::kRemoveEntry, "removed"}
+    };
   }
 
   Uuid ordered_uuid(const std::uint8_t last_byte)
@@ -57,14 +59,14 @@ namespace
       const auto path = _path.u8string();
       sqlite3* raw_db = nullptr;
       const auto open_status = sqlite3_open_v2(reinterpret_cast<const char*>(path.c_str()), &raw_db,
-                                              SQLITE_OPEN_READWRITE, nullptr);
+                                               SQLITE_OPEN_READWRITE, nullptr);
       const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw_db, sqlite3_close};
       ASSERT_EQ(open_status, SQLITE_OK);
       ASSERT_EQ(sqlite3_exec(db.get(), sql, nullptr, nullptr, nullptr), SQLITE_OK) << sqlite3_errmsg(db.get());
     }
 
     const std::filesystem::path _path =
-        std::filesystem::temp_directory_path() / ("cipple-storage-" + Uuid::generate().to_string() + ".db");
+      std::filesystem::temp_directory_path() / ("cipple-storage-" + Uuid::generate().to_string() + ".db");
   };
 
   TEST_F(SqliteStorageTest, RestoresHistoryAndPendingTargetsAfterReopen)
@@ -398,7 +400,8 @@ namespace
   {
     const auto utf8 = path.u8string();
     sqlite3* raw = nullptr;
-    const auto opened = sqlite3_open_v2(reinterpret_cast<const char*>(utf8.c_str()), &raw, SQLITE_OPEN_READONLY, nullptr);
+    const auto opened = sqlite3_open_v2(reinterpret_cast<const char*>(utf8.c_str()), &raw, SQLITE_OPEN_READONLY,
+                                        nullptr);
     const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw, sqlite3_close};
     EXPECT_EQ(opened, SQLITE_OK);
     sqlite3_stmt* statement = nullptr;
@@ -483,8 +486,10 @@ namespace
     EXPECT_EQ(rest[1].uuid, highest.uuid());
     EXPECT_EQ(rest[1].last_update_server_id, -3);
 
-    EXPECT_TRUE(storage.pending_ids_after(7, PendingCursor{rest.back().last_update, rest.back().last_update_server_id,
-                                                          rest.back().uuid}, 10).empty());
+    EXPECT_TRUE(storage.pending_ids_after(7, PendingCursor{
+                                            rest.back().last_update, rest.back().last_update_server_id,
+                                            rest.back().uuid
+                                          }, 10).empty());
   }
 
   TEST_F(SqliteStorageTest, AckBatchIsAtomicAndVisibleOnlyAfterCommit)
@@ -543,7 +548,7 @@ namespace
                                  -1, &ack, nullptr), SQLITE_OK);
     for (int row = 0; row < kRows; ++row)
     {
-      std::array<unsigned char, 16> id{};
+      std::array < unsigned char, 16 > id{};
       id[14] = static_cast<unsigned char>((row >> 8) & 0xff);
       id[15] = static_cast<unsigned char>(row & 0xff);
       const auto version = static_cast<sqlite3_int64>(row) - 20;
@@ -596,8 +601,10 @@ namespace
     const auto page = storage.pending_ids_after(7, std::nullopt, 256);
     ASSERT_EQ(page.size(), 256u);
     EXPECT_EQ(page.front().last_update, -20);
-    const auto next = storage.pending_ids_after(7, PendingCursor{page.back().last_update, page.back().last_update_server_id,
-                                                                 page.back().uuid}, 1);
+    const auto next = storage.pending_ids_after(7, PendingCursor{
+                                                  page.back().last_update, page.back().last_update_server_id,
+                                                  page.back().uuid
+                                                }, 1);
     ASSERT_EQ(next.size(), 1u);
     EXPECT_EQ(next.front().last_update, page.back().last_update + 1);
   }

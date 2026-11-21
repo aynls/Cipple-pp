@@ -35,6 +35,6 @@ namespace cipple::message
     const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
     auto application_name = reader.read_string();
     auto key = reader.read_string();
-    return std::make_unique<UnsubscribeRequest>(uuid, std::move(application_name), std::move(key));
+    return std::make_unique < UnsubscribeRequest > (uuid, std::move(application_name), std::move(key));
   }
 }

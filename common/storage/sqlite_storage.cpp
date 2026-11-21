@@ -205,7 +205,8 @@ namespace cipple::storage
           throw std::runtime_error{"Invalid UUID in SQLite message row"};
         }
         const std::span<const std::uint8_t, 16> uuid_bytes{
-          reinterpret_cast<const std::uint8_t*>(value.data()), value.size()};
+          reinterpret_cast<const std::uint8_t*>(value.data()), value.size()
+        };
         return Uuid::from_bytes(uuid_bytes);
       }
 
@@ -262,20 +263,24 @@ namespace cipple::storage
 
     void insert_item(sqlite3* db, const EntityMessage& message)
     {
-      const Statement insert{db, R"sql(
+      const Statement insert{
+        db, R"sql(
         INSERT INTO item(application_name, key) VALUES (?1, ?2)
         ON CONFLICT(application_name, key) DO NOTHING
-      )sql"};
+      )sql"
+      };
       bind_key(insert, message.application_name(), message.key());
       insert.execute();
     }
 
     void record_delivery(sqlite3* db, const EntityMessage& message)
     {
-      const Statement insert{db, R"sql(
+      const Statement insert{
+        db, R"sql(
         INSERT INTO delivery_log(application_name, key, message_uuid) VALUES (?1, ?2, ?3)
         ON CONFLICT(message_uuid) DO NOTHING
-      )sql"};
+      )sql"
+      };
       bind_key(insert, message.application_name(), message.key());
       insert.bind(3, message.uuid());
       insert.execute();
@@ -283,11 +288,13 @@ namespace cipple::storage
 
     void insert_message(sqlite3* db, const EntityMessage& message)
     {
-      const Statement insert{db, R"sql(
+      const Statement insert{
+        db, R"sql(
         INSERT INTO message(application_name, key, uuid, last_update, last_update_server_id,
                             operation_type, value, base_message_uuid, atomic_operation)
         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
-      )sql"};
+      )sql"
+      };
       bind_key(insert, message.application_name(), message.key());
       insert.bind(3, message.uuid());
       insert.bind(4, message.last_update());
@@ -311,20 +318,22 @@ namespace cipple::storage
                      const EntityMessage* supplied_base)
     {
       const auto* supplied_update =
-          supplied_base ? std::get_if<EntityMessage::Update>(&supplied_base->payload()) : nullptr;
+        supplied_base ? std::get_if<EntityMessage::Update>(&supplied_base->payload()) : nullptr;
       if (base_uuid == message.uuid() ||
-          (supplied_base && (!supplied_update || supplied_base->uuid() != base_uuid ||
-                             supplied_base->application_name() != message.application_name() ||
-                             supplied_base->key() != message.key())))
+        (supplied_base && (!supplied_update || supplied_base->uuid() != base_uuid ||
+          supplied_base->application_name() != message.application_name() ||
+          supplied_base->key() != message.key())))
       {
         return false;
       }
 
       {
-        const Statement query{db, R"sql(
+        const Statement query{
+          db, R"sql(
           SELECT application_name, key, operation_type, last_update, last_update_server_id, retained, value
           FROM message WHERE uuid = ?1
-        )sql"};
+        )sql"
+        };
         query.bind(1, base_uuid);
         if (!query.next())
         {
@@ -336,12 +345,12 @@ namespace cipple::storage
           return true;
         }
         if (query.bytes(0) != message.application_name() || query.bytes(1) != message.key() ||
-            query.bytes(2) != entity::operation_type_wire_name(OperationType::kUpdate))
+          query.bytes(2) != entity::operation_type_wire_name(OperationType::kUpdate))
         {
           return false;
         }
         if (supplied_base && (query.integer(3) != supplied_base->last_update() ||
-                              query.integer(4) != supplied_base->last_update_server_id()))
+          query.integer(4) != supplied_base->last_update_server_id()))
         {
           return false;
         }
@@ -359,7 +368,7 @@ namespace cipple::storage
       restore.bind_bytes(1, supplied_update->value);
       restore.bind(2, base_uuid);
       restore.execute();
-    record_delivery(db, *supplied_base);
+      record_delivery(db, *supplied_base);
       return true;
     }
 
@@ -403,8 +412,10 @@ namespace cipple::storage
       {
         throw std::runtime_error{"Invalid operation type in SQLite message row"};
       }
-      return {row.uuid(0), std::string{row.bytes(1)}, std::string{row.bytes(2)},
-              row.integer(3), static_cast<std::int32_t>(row.integer(4)), std::move(payload)};
+      return {
+        row.uuid(0), std::string{row.bytes(1)}, std::string{row.bytes(2)},
+        row.integer(3), static_cast<std::int32_t>(row.integer(4)), std::move(payload)
+      };
     }
 
     std::vector<EntityMessage> read_messages(const Statement& query)
@@ -491,22 +502,22 @@ namespace cipple::storage
   }
 
   AppendResult SqliteStorage::append(const EntityMessage& message,
-                                    const std::span<const std::int32_t> target_node_ids,
-                                    const EntityMessage* supplied_base)
+                                     const std::span<const std::int32_t> target_node_ids,
+                                     const EntityMessage* supplied_base)
   {
     return append_impl(message, target_node_ids, supplied_base, false).result;
   }
 
   AppendOutcome SqliteStorage::append_with_outcome(const EntityMessage& message,
-                                                  const std::span<const std::int32_t> target_node_ids,
-                                                  const EntityMessage* supplied_base)
+                                                   const std::span<const std::int32_t> target_node_ids,
+                                                   const EntityMessage* supplied_base)
   {
     return append_impl(message, target_node_ids, supplied_base, true);
   }
 
   AppendOutcome SqliteStorage::append_impl(const EntityMessage& message,
-                                          const std::span<const std::int32_t> target_node_ids,
-                                          const EntityMessage* supplied_base, const bool check_current)
+                                           const std::span<const std::int32_t> target_node_ids,
+                                           const EntityMessage* supplied_base, const bool check_current)
   {
     const std::lock_guard lock{_mutex};
     auto* db = _db.get();
@@ -525,11 +536,13 @@ namespace cipple::storage
     insert_message(db, message);
     if (!target_node_ids.empty())
     {
-      const Statement insert_ack{db, R"sql(
+      const Statement insert_ack{
+        db, R"sql(
         INSERT INTO ack(message_uuid, node_id, last_update, last_update_server_id)
         VALUES (?1, ?2, ?3, ?4)
         ON CONFLICT(message_uuid, node_id) DO NOTHING
-      )sql"};
+      )sql"
+      };
       insert_ack.bind(1, message.uuid());
       insert_ack.bind(3, message.last_update());
       insert_ack.bind(4, message.last_update_server_id());
@@ -543,12 +556,14 @@ namespace cipple::storage
     AppendOutcome outcome{AppendResult::kInserted};
     if (check_current)
     {
-      const Statement latest{db, R"sql(
+      const Statement latest{
+        db, R"sql(
         SELECT uuid FROM message
         WHERE application_name = ?1 AND key = ?2 AND retained = 1
         ORDER BY last_update DESC, last_update_server_id DESC, uuid DESC
         LIMIT 1
-      )sql"};
+      )sql"
+      };
       bind_key(latest, message.application_name(), message.key());
       outcome.is_current = latest.next() && latest.uuid(0) == message.uuid();
     }
@@ -617,8 +632,8 @@ namespace cipple::storage
   }
 
   std::vector<PendingId> SqliteStorage::pending_ids_after(const std::int32_t node_id,
-                                                         const std::optional<PendingCursor>& after,
-                                                         const std::int64_t limit) const
+                                                          const std::optional<PendingCursor>& after,
+                                                          const std::int64_t limit) const
   {
     if (limit <= 0)
     {
@@ -656,10 +671,12 @@ namespace cipple::storage
     const std::lock_guard lock{_mutex};
     auto* db = _db.get();
     const Transaction transaction{db};
-    const Statement update{db, R"sql(
+    const Statement update{
+      db, R"sql(
       UPDATE ack SET acknowledged = 1
       WHERE message_uuid = ?1 AND node_id = ?2 AND acknowledged = 0
-    )sql"};
+    )sql"
+    };
     update.bind(2, node_id);
     std::size_t changed = 0;
     for (const auto& message_uuid : message_uuids)
@@ -727,13 +744,15 @@ namespace cipple::storage
     std::unordered_set<Uuid> protected_bases;
     std::vector<Uuid> candidates;
     {
-      const Statement query{db, R"sql(
+      const Statement query{
+        db, R"sql(
         SELECT m.uuid, m.base_message_uuid,
                EXISTS (SELECT 1 FROM ack AS a WHERE a.message_uuid = m.uuid AND a.acknowledged = 0)
         FROM message AS m
         WHERE m.application_name = ?1 AND m.key = ?2 AND m.retained = 1
         ORDER BY m.last_update DESC, m.last_update_server_id DESC, m.uuid DESC
-      )sql"};
+      )sql"
+      };
       bind_key(query, application_name, key);
       std::size_t rank = 0;
       while (query.next())
@@ -752,10 +771,12 @@ namespace cipple::storage
       }
     }
 
-    const Statement reclaim{db, R"sql(
+    const Statement reclaim{
+      db, R"sql(
       UPDATE message SET retained = 0, value = NULL, base_message_uuid = NULL, atomic_operation = NULL
       WHERE uuid = ?1
-    )sql"};
+    )sql"
+    };
     const Statement clear_ack{db, "DELETE FROM ack WHERE message_uuid = ?1 AND acknowledged = 1"};
     std::size_t reclaimed = 0;
     for (const auto& uuid : candidates)

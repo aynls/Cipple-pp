@@ -34,7 +34,8 @@ TEST(BufferWriterTest, WritesU64InBigEndian)
   writer.write_u64(0x0102030405060708);
 
   EXPECT_EQ(writer.bytes(), (std::vector<std::uint8_t>{
-              0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08}));
+              0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08
+            }));
 }
 
 TEST(BufferWriterTest, WritesSignedIntegersBitExact)
@@ -46,7 +47,8 @@ TEST(BufferWriterTest, WritesSignedIntegersBitExact)
 
   EXPECT_EQ(writer.bytes(), (std::vector<std::uint8_t>{
               0xFF, 0xFF, 0xFF, 0xFF,
-              0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE}));
+              0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFE
+            }));
 }
 
 TEST(BufferWriterTest, WritesStringWithU64LengthPrefix)
@@ -57,7 +59,8 @@ TEST(BufferWriterTest, WritesStringWithU64LengthPrefix)
 
   EXPECT_EQ(writer.bytes(), (std::vector<std::uint8_t>{
               0, 0, 0, 0, 0, 0, 0, 3,
-              0x61, 0x62, 0x63}));
+              0x61, 0x62, 0x63
+            }));
 }
 
 TEST(BufferWriterTest, WritesRawBytesWithoutLengthPrefix)

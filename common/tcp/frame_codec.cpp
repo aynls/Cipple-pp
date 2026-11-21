@@ -71,7 +71,9 @@ namespace cipple::tcp
     {
       return std::nullopt;
     }
-    return FrameView{.body = data.subspan(kFrameLengthPrefixSize, length),
-                     .bytes_consumed = kFrameLengthPrefixSize + length};
+    return FrameView{
+      .body = data.subspan(kFrameLengthPrefixSize, length),
+      .bytes_consumed = kFrameLengthPrefixSize + length
+    };
   }
 }

@@ -58,7 +58,7 @@ namespace
   public:
     struct Hooks
     {
-      std::function<void(const EntityMessage&)> after_append;
+      std::function<void(const EntityMessage &)> after_append;
       std::function<void()> before_latest;
       std::function<void(std::string_view, std::int64_t)> before_replay;
     };
@@ -76,7 +76,8 @@ namespace
       return result;
     }
 
-    storage::AppendOutcome append_with_outcome(const EntityMessage& version, const std::span<const std::int32_t> targets,
+    storage::AppendOutcome append_with_outcome(const EntityMessage& version,
+                                               const std::span<const std::int32_t> targets,
                                                const EntityMessage* base) override
     {
       const auto outcome = _store.append_with_outcome(version, targets, base);
@@ -106,7 +107,8 @@ namespace
     }
 
     std::vector<storage::PendingId> pending_ids_after(const std::int32_t node,
-        const std::optional<storage::PendingCursor>& after, const std::int64_t limit) const override
+                                                      const std::optional<storage::PendingCursor>& after,
+                                                      const std::int64_t limit) const override
     {
       return _store.pending_ids_after(node, after, limit);
     }
@@ -117,7 +119,7 @@ namespace
     }
 
     std::vector<storage::JournalEntry> journal_after(const std::string_view app, const std::string_view key,
-                                                      const std::int64_t after, const std::int64_t limit) const override
+                                                     const std::int64_t after, const std::int64_t limit) const override
     {
       if (_hooks.before_replay)
       {
@@ -152,7 +154,7 @@ namespace
     std::shared_ptr<tcp::Session> session;
     std::shared_ptr<std::vector<std::unique_ptr<message::Message>>> inbox;
 
-    template<typename Message>
+    template <typename Message>
     const Message* reply(const Uuid& rpc) const noexcept
     {
       for (const auto& received : *inbox)
@@ -196,7 +198,8 @@ namespace
         reader = std::make_unique<SqliteStorage>(_db);
       }
       _server = Server::start(_io, {asio::ip::address_v4::loopback(), 0},
-        std::make_unique<storage::StorageWriter>(std::move(writer), std::move(reader), limits), options);
+                              std::make_unique<storage::StorageWriter>(std::move(writer), std::move(reader), limits),
+                              options);
     }
 
     WireClient connect_wire()
@@ -205,9 +208,10 @@ namespace
       socket.connect(_server->local_endpoint());
       auto inbox = std::make_shared<std::vector<std::unique_ptr<message::Message>>>();
       auto session = tcp::Session::start(std::move(socket),
-        [inbox](tcp::Session&, std::unique_ptr<message::Message> received) {
-          inbox->push_back(std::move(received));
-        });
+                                         [inbox](tcp::Session&, std::unique_ptr<message::Message> received)
+                                         {
+                                           inbox->push_back(std::move(received));
+                                         });
       return {std::move(session), std::move(inbox)};
     }
 
@@ -216,15 +220,15 @@ namespace
     {
       const auto rpc = Uuid::generate();
       return client.send(message::SubscribeRequest{rpc, "app", std::move(key), cursor})
-          && run_until([&] { return client.reply<message::SubscribeResponse>(rpc); })
-          && client.reply<message::SubscribeResponse>(rpc)->success();
+        && run_until([&] { return client.reply<message::SubscribeResponse>(rpc); })
+        && client.reply<message::SubscribeResponse>(rpc)->success();
     }
 
     bool heartbeat(const WireClient& client)
     {
       const auto rpc = Uuid::generate();
       return client.send(message::HeartbeatRequest{rpc})
-          && run_until([&] { return client.reply<message::HeartbeatResponse>(rpc); });
+        && run_until([&] { return client.reply<message::HeartbeatResponse>(rpc); });
     }
 
     void TearDown() override
@@ -235,7 +239,7 @@ namespace
       EXPECT_FALSE(error) << error.message();
     }
 
-    template<typename Predicate>
+    template <typename Predicate>
     bool run_until(Predicate complete)
     {
       if (_io.stopped())
@@ -253,12 +257,13 @@ namespace
       return complete();
     }
 
-    template<typename Value, typename Send>
+    template <typename Value, typename Send>
     std::expected<Value, error_code> request(Send send)
     {
       using Result = std::expected<Value, error_code>;
       const auto result = std::make_shared<std::optional<Result>>();
-      send([result](const error_code error, Value value) {
+      send([result](const error_code error, Value value)
+      {
         if (error)
         {
           result->emplace(std::unexpected{error});
@@ -277,7 +282,8 @@ namespace
 
     testing::AssertionResult reads(Client& client, const std::optional<std::string>& expected)
     {
-      const auto reply = request<std::optional<std::string>>([&](auto done) {
+      const auto reply = request<std::optional<std::string>>([&](auto done)
+      {
         client.get("app", "key", std::move(done));
       });
       if (!reply)
@@ -289,7 +295,7 @@ namespace
         return testing::AssertionSuccess();
       }
       return testing::AssertionFailure() << "expected " << testing::PrintToString(expected)
-                                         << ", got " << testing::PrintToString(*reply);
+        << ", got " << testing::PrintToString(*reply);
     }
 
     void execute_sql(const char* sql) const
@@ -297,14 +303,14 @@ namespace
       const auto path = _db.u8string();
       sqlite3* raw_db = nullptr;
       const auto status = sqlite3_open_v2(reinterpret_cast<const char*>(path.c_str()), &raw_db,
-                                         SQLITE_OPEN_READWRITE, nullptr);
+                                          SQLITE_OPEN_READWRITE, nullptr);
       const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw_db, sqlite3_close};
       ASSERT_EQ(status, SQLITE_OK);
       ASSERT_EQ(sqlite3_exec(db.get(), sql, nullptr, nullptr, nullptr), SQLITE_OK) << sqlite3_errmsg(db.get());
     }
 
     const std::filesystem::path _db =
-        std::filesystem::temp_directory_path() / ("cipple-single-server-" + Uuid::generate().to_string() + ".db");
+      std::filesystem::temp_directory_path() / ("cipple-single-server-" + Uuid::generate().to_string() + ".db");
     asio::io_context _io;
     std::shared_ptr<Server> _server;
   };
@@ -315,22 +321,29 @@ namespace
     asio::ip::tcp::acceptor offline_peer{_io, {asio::ip::address_v4::loopback(), 0}};
     asio::ip::tcp::acceptor relay_target{_io, {asio::ip::address_v4::loopback(), 0}};
     start_server({.node_id = 1, .peers = {{2, offline_peer.local_endpoint()}, {3, relay_target.local_endpoint()}}},
-      std::make_unique<ObservedStorage>(_db, ObservedStorage::Hooks{
-        .after_append = [committed](const EntityMessage&) { *committed = true; },
-        .before_latest = [committed] {
-          if (std::exchange(*committed, false))
-          {
-            throw std::runtime_error{"injected post-append latest() failure"};
-          }
-        },
-      }));
+                 std::make_unique<ObservedStorage>(_db, ObservedStorage::Hooks{
+                                                     .after_append = [committed](const EntityMessage&)
+                                                     {
+                                                       *committed = true;
+                                                     },
+                                                     .before_latest = [committed]
+                                                     {
+                                                       if (std::exchange(*committed, false))
+                                                       {
+                                                         throw std::runtime_error{
+                                                           "injected post-append latest() failure"
+                                                         };
+                                                       }
+                                                     },
+                                                   }));
     const auto watcher = connect_wire();
     ASSERT_TRUE(subscribe(watcher, 0));
     const auto peer = connect_wire();
     const EntityMessage version{Uuid::generate(), "app", "key", 1, 2, EntityMessage::Update{"remote"}};
-    const auto sync = [&](const Uuid& rpc) {
+    const auto sync = [&](const Uuid& rpc)
+    {
       return peer.send(message::SyncRequest{rpc, version, 2})
-          && run_until([&] { return peer.reply<message::SyncResponse>(rpc); });
+        && run_until([&] { return peer.reply<message::SyncResponse>(rpc); });
     };
     const auto first = Uuid::generate();
     ASSERT_TRUE(sync(first));
@@ -354,8 +367,11 @@ namespace
   {
     const auto queries = std::make_shared<int>(0);
     start_server({}, {}, std::make_unique<ObservedStorage>(_db, ObservedStorage::Hooks{
-      .before_replay = [queries](std::string_view, std::int64_t) { ++*queries; },
-    }));
+                                                             .before_replay = [queries](std::string_view, std::int64_t)
+                                                             {
+                                                               ++*queries;
+                                                             },
+                                                           }));
     const auto watcher = connect_wire();
     ASSERT_TRUE(subscribe(watcher, 0));
     ASSERT_TRUE(run_until([&] { return *queries == 1; }));
@@ -371,8 +387,10 @@ namespace
     const auto publisher = connect_wire();
     const auto newer = Uuid::generate();
     ASSERT_TRUE(publisher.send(message::PutRequest{newer, "app", "key", "newer"}));
-    ASSERT_TRUE(run_until([&] {
-      return publisher.reply<message::PutResponse>(newer) && !watcher.dispatches().empty() && !cohort.dispatches().empty();
+    ASSERT_TRUE(run_until([&]
+    {
+      return publisher.reply<message::PutResponse>(newer) && !watcher.dispatches().empty() && !cohort.dispatches().
+        empty();
     }));
     ASSERT_TRUE(publisher.reply<message::PutResponse>(newer)->success());
     const auto* first = watcher.dispatches().front();
@@ -412,14 +430,18 @@ namespace
     const auto fail_next = std::make_shared<bool>(false);
     const auto initial_reads = std::make_shared<int>(0);
     start_server({}, {}, std::make_unique<ObservedStorage>(_db, ObservedStorage::Hooks{
-      .before_replay = [fail_next, initial_reads](const std::string_view key, std::int64_t) {
-        ++*initial_reads;
-        if (key == "key" && std::exchange(*fail_next, false))
-        {
-          throw std::runtime_error{"injected subscription journal read failure"};
-        }
-      },
-    }));
+                                                             .before_replay = [fail_next, initial_reads](
+                                                               const std::string_view key, std::int64_t)
+                                                             {
+                                                               ++*initial_reads;
+                                                               if (key == "key" && std::exchange(*fail_next, false))
+                                                               {
+                                                                 throw std::runtime_error{
+                                                                   "injected subscription journal read failure"
+                                                                 };
+                                                               }
+                                                             },
+                                                           }));
     const auto affected = connect_wire();
     const auto unaffected = connect_wire();
     ASSERT_TRUE(subscribe(affected, 0));
@@ -432,9 +454,11 @@ namespace
     const auto other_update = Uuid::generate();
     ASSERT_TRUE(publisher.send(message::PutRequest{failed_delivery, "app", "key", "committed"}));
     ASSERT_TRUE(publisher.send(message::PutRequest{other_update, "app", "other", "delivered"}));
-    ASSERT_TRUE(run_until([&] {
-      return publisher.reply<message::PutResponse>(failed_delivery) && publisher.reply<message::PutResponse>(other_update)
-          && !affected.session->is_open() && !unaffected.dispatches().empty();
+    ASSERT_TRUE(run_until([&]
+    {
+      return publisher.reply<message::PutResponse>(failed_delivery) && publisher.reply<message::PutResponse>(
+          other_update)
+        && !affected.session->is_open() && !unaffected.dispatches().empty();
     }));
     EXPECT_TRUE(publisher.reply<message::PutResponse>(failed_delivery)->success());
     EXPECT_TRUE(publisher.reply<message::PutResponse>(other_update)->success());
@@ -456,14 +480,15 @@ namespace
     const auto gate = unblock.get_future().share();
     const auto remote_id = Uuid::generate();
     start_server({.node_id = 1, .peers = {{2, peer_endpoint.local_endpoint()}}},
-      std::make_unique<ObservedStorage>(_db, ObservedStorage::Hooks{
-        .after_append = [gate, remote_id](const EntityMessage& version) {
-          if (version.uuid() == remote_id)
-          {
-            gate.wait();
-          }
-        },
-      }));
+                 std::make_unique<ObservedStorage>(_db, ObservedStorage::Hooks{
+                                                     .after_append = [gate, remote_id](const EntityMessage& version)
+                                                     {
+                                                       if (version.uuid() == remote_id)
+                                                       {
+                                                         gate.wait();
+                                                       }
+                                                     },
+                                                   }));
     const auto watcher = connect_wire();
     ASSERT_TRUE(subscribe(watcher));
     const auto peer = connect_wire();
@@ -488,9 +513,10 @@ namespace
     // This response proves both mutations were enqueued before the remote completion could run.
     ASSERT_TRUE(heartbeat(peer));
     unblock.set_value();
-    ASSERT_TRUE(run_until([&] {
+    ASSERT_TRUE(run_until([&]
+    {
       return peer.reply<message::SyncResponse>(sync_id) && peer.reply<message::PutResponse>(local_id)
-          && watcher.dispatches().size() == 2;
+        && watcher.dispatches().size() == 2;
     }));
     EXPECT_EQ(peer.reply<message::SyncResponse>(sync_id)->result(), message::Result::kSuccess);
     EXPECT_TRUE(peer.reply<message::PutResponse>(local_id)->success());
@@ -517,7 +543,8 @@ namespace
     const EntityMessage version{Uuid::generate(), "app", "key", 100, 2, EntityMessage::Update{large}};
     ASSERT_TRUE(client.send(message::PutRequest{put_id, "app", "key", large}));
     ASSERT_TRUE(client.send(message::SyncRequest{sync_id, version, 2}));
-    ASSERT_TRUE(run_until([&] {
+    ASSERT_TRUE(run_until([&]
+    {
       return client.reply<message::PutResponse>(put_id) && client.reply<message::SyncResponse>(sync_id);
     }));
     EXPECT_FALSE(client.reply<message::PutResponse>(put_id)->success());
@@ -539,8 +566,8 @@ namespace
     std::vector<EntityMessage> events;
     const auto writer = Client::start(_io, _server->local_endpoint());
     const auto reader = Client::start(_io, _server->local_endpoint(), {
-      .on_update = [&](const EntityMessage& event) { events.push_back(event); },
-    });
+                                        .on_update = [&](const EntityMessage& event) { events.push_back(event); },
+                                      });
     ASSERT_TRUE(run_until([&] { return writer->is_connected() && reader->is_connected(); }));
     ASSERT_EQ(request<bool>([&](auto done) { reader->subscribe("app", "key", std::move(done)); }), true);
     ASSERT_TRUE(reads(*reader, std::nullopt));
@@ -591,8 +618,11 @@ namespace
     std::vector<Uuid> delivered;
     const auto writer = Client::start(_io, _server->local_endpoint());
     const auto reader = Client::start(_io, _server->local_endpoint(), {
-      .on_update = [&](const EntityMessage& version) { delivered.push_back(version.uuid()); },
-    });
+                                        .on_update = [&](const EntityMessage& version)
+                                        {
+                                          delivered.push_back(version.uuid());
+                                        },
+                                      });
     ASSERT_TRUE(run_until([&] { return writer->is_connected() && reader->is_connected(); }));
     ASSERT_EQ(request<bool>([&](auto done) { reader->subscribe("app", "key", std::move(done)); }), true);
 
@@ -614,8 +644,10 @@ namespace
   {
     constexpr std::int64_t future_timestamp = 9'000'000'000'000;
     const EntityMessage base{Uuid::generate(), "app", "key", future_timestamp, 2, EntityMessage::Update{"a-x-x-b"}};
-    const EntityMessage increment{Uuid::generate(), "app", "key", future_timestamp + 1, 2,
-      EntityMessage::IncrementalUpdate{base.uuid(), cipple::entity::AtomicOperation::kRemoveEntry, "-x"}};
+    const EntityMessage increment{
+      Uuid::generate(), "app", "key", future_timestamp + 1, 2,
+      EntityMessage::IncrementalUpdate{base.uuid(), cipple::entity::AtomicOperation::kRemoveEntry, "-x"}
+    };
     {
       SqliteStorage storage{_db};
       ASSERT_EQ(storage.append(base, {}), AppendResult::kInserted);

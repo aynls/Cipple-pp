@@ -64,7 +64,8 @@ namespace cipple::client
       void bind_text(const int index, const std::string_view text)
       {
         const auto* data = text.empty() ? "" : text.data();
-        check(_database, sqlite3_bind_text64(_statement.get(), index, data, text.size(), SQLITE_TRANSIENT, SQLITE_UTF8));
+        check(_database, sqlite3_bind_text64(_statement.get(), index, data, text.size(), SQLITE_TRANSIENT,
+                                             SQLITE_UTF8));
       }
 
       void bind_int(const int index, const std::int64_t value)
@@ -226,33 +227,43 @@ namespace cipple::client
 
     explicit Statements(sqlite3* database)
       : find_event{database, "SELECT encoded, value FROM client_event WHERE uuid = ?1;"}
-        , find_base{database, R"sql(
+        , find_base{
+          database, R"sql(
           SELECT value FROM client_event
           WHERE uuid = ?1 AND application = ?2 AND key = ?3 AND operation_type = 'update';
-        )sql"}
-        , insert_event{database, R"sql(
+        )sql"
+        }
+        , insert_event{
+          database, R"sql(
           INSERT INTO client_event
             (uuid, application, key, last_update, last_update_server_id, operation_type, encoded, value,
              first_endpoint, first_sequence)
           VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10);
-        )sql"}
-        , latest{database, R"sql(
+        )sql"
+        }
+        , latest{
+          database, R"sql(
           SELECT uuid FROM client_event WHERE application = ?1 AND key = ?2
           ORDER BY last_update DESC, last_update_server_id DESC, uuid DESC LIMIT 1;
-        )sql"}
-        , advance{database, R"sql(
+        )sql"
+        }
+        , advance{
+          database, R"sql(
           INSERT INTO client_cursor(endpoint, application, key, sequence) VALUES (?1, ?2, ?3, ?4)
           ON CONFLICT(endpoint, application, key) DO UPDATE SET sequence = excluded.sequence
           WHERE excluded.sequence > client_cursor.sequence;
-        )sql"}
-        , lookup_cursor{database,
-                        "SELECT sequence FROM client_cursor WHERE endpoint=?1 AND application=?2 AND key=?3;"}
+        )sql"
+        }
+        , lookup_cursor{
+          database,
+          "SELECT sequence FROM client_cursor WHERE endpoint=?1 AND application=?2 AND key=?3;"
+        }
     {
     }
   };
 
   std::optional<std::string> materialize_delivery(const message::DispatchRequest& dispatch,
-                                                   std::optional<std::string_view> saved_base)
+                                                  std::optional<std::string_view> saved_base)
   {
     const auto& version = dispatch.entity();
     if (const auto* increment = std::get_if<EntityMessage::IncrementalUpdate>(&version.payload()))
@@ -324,7 +335,7 @@ namespace cipple::client
   }
 
   std::int64_t SubscriptionStore::cursor(const std::string_view endpoint, const std::string_view application,
-                                          const std::string_view key) const
+                                         const std::string_view key) const
   {
     auto& lookup = _statements->lookup_cursor;
     const ResetStatement reset{lookup};

@@ -48,7 +48,8 @@ def _start_server(binary: Path, db: Path, env: dict[str, str], work: Path) -> tu
     return child, port
 
 
-def _cli(binary: Path, args: list[str], env: dict[str, str], work: Path, timeout: float = 12) -> tuple[int | None, str, str, str]:
+def _cli(binary: Path, args: list[str], env: dict[str, str], work: Path, timeout: float = 12) -> tuple[
+    int | None, str, str, str]:
     command = [str(binary), *args]
     child = Child(command, work, env)
     code = child.finish(timeout)
@@ -224,7 +225,7 @@ def _protocol_bytes_and_subscription(port: int) -> dict:
         if stray is not None:
             return _case("protocol_subscription", "fail", "其他键的写入推进了这条订阅。", [], [str(stray[:40])])
         if not decode_bool_response(
-            reader.request(unsubscribe_request(uuid.uuid4(), APP, b"live")), UNSUBSCRIBE_RESPONSE
+                reader.request(unsubscribe_request(uuid.uuid4(), APP, b"live")), UNSUBSCRIBE_RESPONSE
         ):
             return _case("protocol_subscription", "fail", "退订被拒绝。", [], observations)
         writer.request(put_request(uuid.uuid4(), APP, b"live", b"two"))
@@ -329,7 +330,8 @@ def _masked_increment(client_bin: Path, port: int, db: Path, env: dict[str, str]
             observations.append(subscriber.text())
             return _case("masked_increment_catchup", "fail", "订阅者没有进入 Subscribed。", commands, observations)
         code, out, err, command = _cli(
-            client_bin, ["--request-id", str(base), "--timeout-ms", "8000", endpoint, "put", "acc", "mask", "base"], env, work
+            client_bin, ["--request-id", str(base), "--timeout-ms", "8000", endpoint, "put", "acc", "mask", "base"],
+            env, work
         )
         commands.append(command)
         observations.append(f"put exit={code} stdout={out!r} stderr={err.strip()!r}")
@@ -356,7 +358,8 @@ def _masked_increment(client_bin: Path, port: int, db: Path, env: dict[str, str]
     code, out, err = run([endpoint, "get", "acc", "mask"])
     observations.append(format_db(db))
     if "Configuration not found" not in err:
-        return _case("masked_increment_catchup", "fail", f"删除没有遮蔽可见值，get 返回 {out!r} {err!r}。", commands, observations)
+        return _case("masked_increment_catchup", "fail", f"删除没有遮蔽可见值，get 返回 {out!r} {err!r}。", commands,
+                     observations)
     if not journal_has(db, inc):
         return _case("masked_increment_catchup", "fail", "删除之后 delivery_log 里没有增量。", commands, observations)
 
@@ -404,7 +407,7 @@ def _benchmark(port: int) -> dict:
         conn.close()
     ordered = sorted(samples)
     summary = (
-        f"n=30 min={ordered[0]:.3f}ms p50={ordered[len(ordered)//2]:.3f}ms "
+        f"n=30 min={ordered[0]:.3f}ms p50={ordered[len(ordered) // 2]:.3f}ms "
         f"max={ordered[-1]:.3f}ms"
     )
     return _case(
