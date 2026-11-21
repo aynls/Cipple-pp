@@ -14,6 +14,7 @@
 
 #include "server.hpp"
 #include "storage/sqlite_storage.hpp"
+#include "storage/storage_writer.hpp"
 
 namespace
 {
@@ -106,8 +107,13 @@ int main(const int argc, char** argv)
       }
     }
     asio::io_context context;
-    const auto server = cipple::server::Server::start(context, {bind, port},
-      std::make_unique<cipple::storage::SqliteStorage>(argv[2]), std::move(options));
+    // Two connections to the same file: commits run on the writer thread,
+    // the I/O thread keeps its own read connection.
+    auto storage = std::make_unique<cipple::storage::StorageWriter>(
+      std::make_unique<cipple::storage::SqliteStorage>(argv[2]),
+      std::make_unique<cipple::storage::SqliteStorage>(argv[2]));
+    const auto server = cipple::server::Server::start(context, {bind, port}, std::move(storage),
+      std::move(options));
     asio::signal_set signals{context, SIGINT, SIGTERM};
     signals.async_wait([&](const boost::system::error_code error, int) {
       if (!error)

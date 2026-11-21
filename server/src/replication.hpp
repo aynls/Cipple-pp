@@ -21,6 +21,7 @@ namespace cipple::message
 namespace cipple::storage
 {
   class Storage;
+  class StorageWriter;
 }
 
 namespace cipple::tcp
@@ -45,11 +46,12 @@ namespace cipple::server
   class Replication final : public std::enable_shared_from_this<Replication>
   {
   public:
-    // peers 中忽略 id == node_id 的自身项与重复 id。storage 由调用方持有，
-    // 且必须比本对象活得更久（stop() 之后不得再触发存储访问）。
+    // peers 中忽略 id == node_id 的自身项与重复 id。reads 是读连接，
+    // writer 承担 mark_acked 提交；两者由调用方持有，且必须比本对象活得
+    // 更久（stop() 之后不得再触发存储访问）。
     static std::shared_ptr<Replication> start(boost::asio::io_context& context,
-                                              storage::Storage& storage, std::int32_t node_id,
-                                              std::vector<PeerAddress> peers);
+                                              storage::Storage& reads, storage::StorageWriter& writer,
+                                              std::int32_t node_id, std::vector<PeerAddress> peers);
     ~Replication() noexcept;
 
     // 新消息已写入存储并登记 ack 目标后调用；合并为一次泵送调度，可高频调用。
@@ -60,8 +62,8 @@ namespace cipple::server
   private:
     struct Peer;
 
-    Replication(boost::asio::io_context& context, storage::Storage& storage, std::int32_t node_id,
-                std::vector<PeerAddress> peers);
+    Replication(boost::asio::io_context& context, storage::Storage& reads, storage::StorageWriter& writer,
+                std::int32_t node_id, std::vector<PeerAddress> peers);
 
     void open_peers();
     void request_pump(Peer& peer) noexcept;
@@ -83,7 +85,8 @@ namespace cipple::server
     void on_retry(Peer& peer) noexcept;
 
     boost::asio::io_context& _context;
-    storage::Storage& _storage;
+    storage::Storage& _reads;
+    storage::StorageWriter& _writer;
     std::int32_t _node_id;
     std::vector<std::unique_ptr<Peer>> _peers;
     bool _stopped = false;

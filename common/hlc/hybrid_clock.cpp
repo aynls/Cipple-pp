@@ -42,8 +42,9 @@ namespace cipple::hlc
 
   std::int64_t HybridClock::tick()
   {
-    using namespace std::chrono;
-    const auto now = duration_cast<milliseconds>(system_clock::now().time_since_epoch()).count();
+    const auto now = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).
+      count();
+
     const auto physical = pack(now + _offset_ms);
     if (_last == kLargestVersion)
     {

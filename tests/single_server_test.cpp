@@ -18,6 +18,7 @@
 #include "hlc/hybrid_clock.hpp"
 #include "server.hpp"
 #include "storage/sqlite_storage.hpp"
+#include "storage/storage_writer.hpp"
 
 namespace
 {
@@ -35,7 +36,9 @@ namespace
   protected:
     void start_server()
     {
-      _server = Server::start(_io, {asio::ip::address_v4::loopback(), 0}, std::make_unique<SqliteStorage>(_db));
+      _server = Server::start(_io, {asio::ip::address_v4::loopback(), 0},
+        std::make_unique<cipple::storage::StorageWriter>(std::make_unique<SqliteStorage>(_db),
+                                                       std::make_unique<SqliteStorage>(_db)));
     }
 
     void TearDown() override

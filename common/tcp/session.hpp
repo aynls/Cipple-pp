@@ -40,13 +40,17 @@ namespace cipple::tcp
     // Returns the enqueue result. Accepted frames report the local write result or close reason once.
     [[nodiscard]] boost::system::error_code async_send(const message::Message& message,
                                                         WriteHandler on_written = {});
+    // Sends an already encoded frame. Fan-out callers encode once and share
+    // the buffer instead of paying an encode per session.
+    [[nodiscard]] boost::system::error_code async_send(EncodedFrame frame,
+                                                        WriteHandler on_written = {});
     void close();
     bool is_open() const noexcept;
 
   private:
     struct PendingWrite
     {
-      std::vector<std::uint8_t> bytes;
+      EncodedFrame bytes;
       WriteHandler on_written;
     };
 

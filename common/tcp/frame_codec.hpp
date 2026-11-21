@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <span>
 #include <vector>
@@ -32,6 +33,14 @@ namespace cipple::tcp
   // The configurable limit covers the body only and must be in [1, INT32_MAX].
   // Invalid limits throw std::invalid_argument; oversized frames throw std::length_error.
   std::vector<std::uint8_t> encode_frame(
+    const message::Message& message, std::size_t max_frame_length = kDefaultMaxFrameLength);
+
+  // A fully encoded frame kept in shared ownership so one encode can be
+  // queued on many sessions (e.g. dispatching an update to all subscribers).
+  using EncodedFrame = std::shared_ptr<const std::vector<std::uint8_t>>;
+
+  // Same encoding and errors as encode_frame, in shared ownership.
+  EncodedFrame encode_frame_shared(
     const message::Message& message, std::size_t max_frame_length = kDefaultMaxFrameLength);
 
   // Inspect the first frame without consuming or copying input. A partial header/body

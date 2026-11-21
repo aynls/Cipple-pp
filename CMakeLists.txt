@@ -17,6 +17,7 @@ add_subdirectory(common)
 add_subdirectory(server)
 add_subdirectory(client)
 add_subdirectory(tests)
+add_subdirectory(bench)
 
 if (MSVC)
     foreach (target IN ITEMS
@@ -26,6 +27,7 @@ if (MSVC)
             cipple_server
             cipple_client
             cipple_tests
+            cipple_bench
     )
         target_compile_options(${target} PRIVATE /utf-8)
     endforeach ()

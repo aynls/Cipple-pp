@@ -26,6 +26,7 @@
 #include "message/sync_request.hpp"
 #include "message/sync_response.hpp"
 #include "storage/storage.hpp"
+#include "storage/storage_writer.hpp"
 #include "tcp/connector.hpp"
 #include "tcp/session.hpp"
 #include "uuid.hpp"
@@ -110,19 +111,21 @@ namespace cipple::server
     asio::steady_timer retry_timer;
   };
 
-  std::shared_ptr<Replication> Replication::start(asio::io_context& context, storage::Storage& storage,
-                                                  const std::int32_t node_id, std::vector<PeerAddress> peers)
+  std::shared_ptr<Replication> Replication::start(asio::io_context& context, storage::Storage& reads,
+                                                  storage::StorageWriter& writer, const std::int32_t node_id,
+                                                  std::vector<PeerAddress> peers)
   {
     auto replication = std::shared_ptr<Replication>{
-      new Replication{context, storage, node_id, std::move(peers)}};
+      new Replication{context, reads, writer, node_id, std::move(peers)}};
     replication->open_peers();
     return replication;
   }
 
-  Replication::Replication(asio::io_context& context, storage::Storage& storage, const std::int32_t node_id,
-                           std::vector<PeerAddress> peers)
+  Replication::Replication(asio::io_context& context, storage::Storage& reads, storage::StorageWriter& writer,
+                           const std::int32_t node_id, std::vector<PeerAddress> peers)
     : _context{context}
-      , _storage{storage}
+      , _reads{reads}
+      , _writer{writer}
       , _node_id{node_id}
   {
     std::unordered_set<std::int32_t> seen;
@@ -280,7 +283,7 @@ namespace cipple::server
   void Replication::stage_pending(Peer& peer)
   {
     const auto room = static_cast<std::int64_t>(kMaxStaged - peer.staged.size());
-    for (const auto& uuid : _storage.pending_ids_for_node(peer.id, std::min<std::int64_t>(kFetchBatch, room)))
+    for (const auto& uuid : _reads.pending_ids_for_node(peer.id, std::min<std::int64_t>(kFetchBatch, room)))
     {
       if (peer.staged.contains(uuid) || peer.undeliverable.contains(uuid))
       {
@@ -310,7 +313,7 @@ namespace cipple::server
       try
       {
         const auto message_uuid = outbound.message_uuid;
-        auto entity = _storage.find_message(message_uuid);
+        auto entity = _reads.find_message(message_uuid);
         if (!entity)
         {
           peer.staged.erase(message_uuid);
@@ -322,7 +325,7 @@ namespace cipple::server
         std::optional<EntityMessage> base;
         if (const auto* delta = std::get_if<EntityMessage::IncrementalUpdate>(&entity->payload()))
         {
-          if (auto found = _storage.find_message(delta->base_message_uuid))
+          if (auto found = _reads.find_message(delta->base_message_uuid))
           {
             base = std::move(*found);
           }
@@ -595,10 +598,16 @@ namespace cipple::server
       }
       else
       {
-        // kSuccess / kDuplicated = 对端已持久化：先落 mark_acked，再清本地状态；
-        // 标记失败时保持 staged，随后按超时重发。
+        // kSuccess / kDuplicated = 对端已持久化：mark_acked 提交到写线程；
+        // 失败时保持 staged，随后按超时重发。
         const auto entity_id = attempt->second.outbound.message_uuid;
-        _storage.mark_acked(entity_id, peer.id);
+        const auto node_id = peer.id;
+        const auto marked = _writer.submit(_context,
+          [entity_id, node_id](storage::Storage& storage) { storage.mark_acked(entity_id, node_id); });
+        if (!marked)
+        {
+          return;
+        }
         peer.failure_reported = false;
         peer.staged.erase(entity_id);
         peer.in_flight.erase(attempt);

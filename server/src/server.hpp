@@ -14,6 +14,7 @@
 
 #include "entity/entity_message.hpp"
 #include "hlc/hybrid_clock.hpp"
+#include "message/result.hpp"
 #include "replication.hpp"
 
 namespace boost::asio
@@ -30,7 +31,7 @@ namespace cipple::message
 
 namespace cipple::storage
 {
-  class Storage;
+  class StorageWriter;
 }
 
 namespace cipple::tcp
@@ -50,15 +51,17 @@ namespace cipple::server
   };
 
   // Accepts clients and processes their requests serially on one I/O thread.
+  // Mutations are committed on the storage's writer thread; responses and
+  // dispatch still run on the I/O thread after the commit completes.
   class Server final : public std::enable_shared_from_this<Server>
   {
   public:
     static std::shared_ptr<Server> start(boost::asio::io_context& context,
                                         const boost::asio::ip::tcp::endpoint& endpoint,
-                                        std::unique_ptr<storage::Storage> storage, std::int32_t node_id = 0);
+                                        std::unique_ptr<storage::StorageWriter> storage, std::int32_t node_id = 0);
     static std::shared_ptr<Server> start(boost::asio::io_context& context,
                                         const boost::asio::ip::tcp::endpoint& endpoint,
-                                        std::unique_ptr<storage::Storage> storage, ServerOptions options);
+                                        std::unique_ptr<storage::StorageWriter> storage, ServerOptions options);
     ~Server() noexcept;
 
     const boost::asio::ip::tcp::endpoint& local_endpoint() const noexcept;
@@ -72,6 +75,22 @@ namespace cipple::server
       Uuid reply_id;
       std::int64_t sequence;
       std::chrono::steady_clock::time_point deadline;
+    };
+
+    // Filled on the writer thread, consumed on the I/O thread.
+    struct WriteOutcome
+    {
+      bool success = false;
+      bool inserted = false;
+      std::optional<std::string> error;
+    };
+
+    struct SyncOutcome
+    {
+      message::Result result = message::Result::kRejected;
+      bool new_base = false;
+      bool is_current = false;
+      std::optional<std::string> error;
     };
 
     struct Subscription
@@ -88,7 +107,7 @@ namespace cipple::server
     };
 
     Server(boost::asio::io_context& context, const boost::asio::ip::tcp::endpoint& endpoint,
-           std::unique_ptr<storage::Storage> storage, const ServerOptions& options);
+           std::unique_ptr<storage::StorageWriter> storage, const ServerOptions& options);
 
     void accept_next();
     void attach(boost::asio::ip::tcp::socket socket);
@@ -99,12 +118,19 @@ namespace cipple::server
 
     template<typename Response, typename Request>
     void write(tcp::Session& session, const Request& request, entity::EntityMessage::Payload payload);
+    template<typename Response>
+    void finish_write(tcp::Session& session, const Uuid& request_id, const entity::EntityMessage& version,
+                      const WriteOutcome& outcome);
+    void finish_sync(tcp::Session& session, const Uuid& request_id, const entity::EntityMessage& version,
+                     const std::optional<entity::EntityMessage>& supplied, bool notify,
+                     const SyncOutcome& outcome);
 
     void publish(const entity::EntityMessage& version, bool is_current);
     void replay(tcp::Session& session, const ConfigKey& key, Subscription& subscription);
     void check_delivery_deadlines();
 
-    std::unique_ptr<storage::Storage> _storage;
+    boost::asio::io_context& _context;
+    std::unique_ptr<storage::StorageWriter> _storage;
     boost::asio::ip::tcp::acceptor _acceptor;
     boost::asio::steady_timer _delivery_timer;
     boost::asio::ip::tcp::endpoint _local_endpoint;

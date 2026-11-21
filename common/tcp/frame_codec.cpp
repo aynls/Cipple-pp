@@ -34,6 +34,12 @@ namespace cipple::tcp
     return writer.bytes();
   }
 
+  EncodedFrame encode_frame_shared(
+    const message::Message& message, const std::size_t max_frame_length)
+  {
+    return std::make_shared<const std::vector<std::uint8_t>>(encode_frame(message, max_frame_length));
+  }
+
   std::size_t decode_frame_length(const std::span<const std::uint8_t, kFrameLengthPrefixSize> prefix,
                                   const std::size_t max_frame_length)
   {

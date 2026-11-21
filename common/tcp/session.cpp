@@ -49,26 +49,38 @@ namespace cipple::tcp
 
   boost::system::error_code Session::async_send(const message::Message& message, WriteHandler on_written)
   {
-    if (_closed)
-    {
-      return boost::asio::error::not_connected;
-    }
-
-    std::vector<std::uint8_t> bytes;
+    EncodedFrame frame;
     try
     {
-      bytes = encode_frame(message, _limits.max_frame_length);
+      frame = encode_frame_shared(message, _limits.max_frame_length);
     }
     catch (const std::length_error&)
     {
       return boost::asio::error::message_size;
     }
-    if (bytes.size() > _limits.max_queued_bytes - _queued_bytes)
+    return async_send(std::move(frame), std::move(on_written));
+  }
+
+  boost::system::error_code Session::async_send(EncodedFrame frame, WriteHandler on_written)
+  {
+    if (_closed)
+    {
+      return boost::asio::error::not_connected;
+    }
+    if (!frame || frame->size() < kFrameLengthPrefixSize)
+    {
+      return boost::asio::error::invalid_argument;
+    }
+    if (frame->size() - kFrameLengthPrefixSize > _limits.max_frame_length)
+    {
+      return boost::asio::error::message_size;
+    }
+    if (frame->size() > _limits.max_queued_bytes - _queued_bytes)
     {
       return boost::asio::error::no_buffer_space;
     }
-    const auto size = bytes.size();
-    _pending_writes.push_back({std::move(bytes), std::move(on_written)});
+    const auto size = frame->size();
+    _pending_writes.push_back({std::move(frame), std::move(on_written)});
     _queued_bytes += size;
     write_next();
     return {};
@@ -169,7 +181,7 @@ namespace cipple::tcp
     }
     _active_write.emplace(std::move(_pending_writes.front()));
     _pending_writes.pop_front();
-    boost::asio::async_write(_socket, boost::asio::buffer(_active_write->bytes),
+    boost::asio::async_write(_socket, boost::asio::buffer(*_active_write->bytes),
                              [self = shared_from_this()](const boost::system::error_code error, std::size_t) {
       self->on_write(error);
     });
@@ -190,7 +202,7 @@ namespace cipple::tcp
     }
 
     auto on_written = std::move(_active_write->on_written);
-    _queued_bytes -= _active_write->bytes.size();
+    _queued_bytes -= _active_write->bytes->size();
     _active_write.reset();
     if (on_written)
     {

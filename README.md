@@ -2,6 +2,8 @@
 
 Cipple++ 是 Ripple 的 C++23 配置发布订阅实现。服务按 `(application, key)` 管理全量更新、增量和删除。副本通过 TCP 同步已持久化的版本，订阅端可以在断线、进程重启和换节点后补齐更新。
 
+设计导读见[项目架构](doc/architecture.md)。
+
 ## 构建并运行演示
 
 Windows 构建需要 CMake 3.28 或以上、Ninja 和支持 C++23 `std::expected` 的编译器。验证环境使用 MSYS2 UCRT64 GCC 15.2、Boost 1.91、SQLite 3.53、CMake 4.4.2 和 Ninja 1.13.2。演示与集成实验使用 Python 3。

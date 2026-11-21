@@ -34,6 +34,7 @@ add_library(cipple_common STATIC
         message/unsubscribe_response.cpp
         storage/sqlite_storage.cpp
         storage/storage.cpp
+        storage/storage_writer.cpp
         tcp/buffer_reader.cpp
         tcp/buffer_writer.cpp
         tcp/connector.cpp
