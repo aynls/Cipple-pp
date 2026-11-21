@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -38,6 +39,10 @@ namespace cipple::client
     AcceptedDelivery accept(std::string_view endpoint, const message::DispatchRequest& dispatch);
 
   private:
+    struct Statements;
+
     sqlite3* _database = nullptr;
+    // Finalized before _database is closed (destructor runs statements down first).
+    std::unique_ptr<Statements> _statements;
   };
 }
