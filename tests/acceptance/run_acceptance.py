@@ -24,6 +24,7 @@ sys.path.insert(0, str(ACCEPTANCE))
 from cipple_acceptance.combined import run_combined  # noqa: E402
 from cipple_acceptance.m4 import run_m4  # noqa: E402
 from cipple_acceptance.mesh import run_mesh  # noqa: E402
+from cipple_acceptance.replication_progress import run_replication_progress  # noqa: E402
 from cipple_acceptance.runtime import candidate_env, stop_all  # noqa: E402
 from cipple_acceptance.selftest import oracle_case, proxy_case  # noqa: E402
 
@@ -167,6 +168,7 @@ def main() -> int:
             ("m4_runner", "单节点验收运行器自身失败。", run_m4, work / "m4"),
             ("cluster_runner", "集群验收运行器自身失败。", run_combined, work / "cluster"),
             ("mesh_runner", "mesh 验收运行器自身失败。", run_mesh, work / "mesh"),
+            ("replication_progress_runner", "复制补发验收运行器自身失败。", run_replication_progress, work / "progress"),
         )
         for name, detail, runner, folder in runners:
             try:
