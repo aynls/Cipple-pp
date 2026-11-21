@@ -4,21 +4,33 @@ Cipple++ 按 `(application, key)` 管理配置。每个服务端都能接受写�
 
 ## 组件
 
-- `server/` 处理配置请求，在本地提交版本后向其他副本同步，并向订阅客户端推送变更。[请求处理](../server/src/server.cpp) · [副本同步](../server/src/replication.cpp)
+- `server/` 处理配置请求，在本地提交版本后向其他副本同步，并向订阅客户端推送变更。`Subscriptions` 管理会话订阅、回放和分发回执。[请求处理](../server/src/server.cpp) · [副本同步](../server/src/replication.cpp) · [订阅路由](../server/src/subscriptions.cpp)
 - `client/` 提供命令行入口，支持多端点连接和切换。持久订阅将事件与回放进度保存在客户端的 SQLite 文件中。[命令行入口](../client/main.cpp) · [订阅存储](../client/src/subscription_store.cpp)
 - `common/` 提供共用的消息、基于 Boost.Asio 的 TCP 会话、版本模型和服务端 SQLite 存储。[TCP 会话](../common/tcp/session.cpp)
+
+## 执行模型
+
+每个服务端运行一个 I/O 线程和一个 SQLite 写线程。I/O 线程管理 TCP 会话、订阅游标、复制窗口和计时器，通过独立的 SQLite 连接读取数据。`StorageWriter` 在写线程按入队顺序执行写任务，并把完成回调投递回 I/O 线程。关闭服务端时，先停止接收连接与复制调度，再等待已接收的写任务结束。[服务入口](../server/main.cpp) · [写线程](../common/storage/storage_writer.cpp)
+
+写入容量包括正在排队、执行和等待 I/O 线程处理结果的任务。默认允许 1,024 个配置写入或入站同步任务、合计 64 MiB 的申报负载，并为出站复制确认预留 256 个任务名额。请求在入队前达到容量限制时收到拒绝响应。三个上限由 `StorageWriter::Limits` 定义。[写入容量](../common/storage/storage_writer.hpp)
 
 ## 写入与复制
 
 接收写入的节点在同一 SQLite 事务中保存版本、回放记录和待确认的复制目标。事务提交后即可向发布者返回成功，复制在后台进行。结果未知时，发布者可携带相同的请求 UUID 和内容向原节点重试。
 
+写线程维护混合逻辑时钟（HLC）。本地写入在确认请求 UUID 首次出现后取版本号，远端写入在提交后才推进本地时钟。SQLite 在追加事务内判定所写版本是否成为该键的当前值。只有成功提交且成为当前值的版本进入实时推送。[写入路径](../server/src/server.cpp) · [提交结果](../common/storage/sqlite_storage.cpp)
+
 目标副本提交版本后返回确认，已存有相同版本时也可确认。发送端收到同一会话中与本次请求匹配的回执后保存确认进度，断线或重启后继续发送待确认记录。默认的 `mesh` 模式允许持有版本的接收节点继续向其他成员传播，`star` 模式由写入节点直接向各目标发送。
 
 ## 当前值与订阅恢复
 
-读取时按混合逻辑时钟（HLC）、源节点 ID 和版本 UUID 依次比较，取排序最高的版本。回放按各副本的本地追加序号进行，因此晚到的旧版本也能送达。[时钟](../common/hlc/hybrid_clock.cpp) · [读取与回放](../common/storage/sqlite_storage.cpp)
+读取时按 HLC、源节点 ID 和版本 UUID 依次比较，取排序最高的版本。持久回放取该键在本地日志中严格晚于游标的第一条记录，因此晚到的旧版本也能送达。[时钟](../common/hlc/hybrid_clock.cpp) · [读取与回放](../common/storage/sqlite_storage.cpp)
+
+服务端按配置键索引订阅会话。同一轮中，游标相同的同键订阅共享一次日志查询和编码帧。每个会话对每个键保留一条待确认投递，收到匹配回执后推进游标。读取或发送失败时关闭受影响的会话，客户端重连后从已保存的游标继续。[订阅状态](../server/src/subscriptions.cpp)
 
 持久订阅客户端在同一事务中保存事件和该端点、该键的回放游标，再向服务端确认。重新连接时从该端点的游标续传，首次连接其他端点时从该副本保留历史的开头回放。客户端按版本 UUID 去重，收到重复事件时仍推进所连端点的游标。
+
+客户端复用查询、写入事件和更新游标的预编译语句。每次使用结束时释放查询游标和参数绑定，让 SQLite 可以在投递之间回收 WAL 空间。[客户端存储](../client/src/subscription_store.cpp)
 
 ## 部署边界
 

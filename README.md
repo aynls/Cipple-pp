@@ -65,7 +65,7 @@ build/client/cipple_client.exe 7001 delete catalog feature
 
 ## 核对交付
 
-构建后运行黑盒验收。脚本启动真实进程，按帧注入回执丢失和分区，并读取独立 SQLite 文件核对状态。失败或阻塞的用例会使进程返回非零。
+构建后运行黑盒验收。脚本启动真实进程，注入回执丢失、网络分区、接收端拒绝旧版本和发送端确认落盘失败。脚本读取独立 SQLite 文件核对持久化与确认进度。失败或阻塞的用例会使进程返回非零。
 
 ```powershell
 py -3 tests/acceptance/run_acceptance.py --server build/server/cipple_server.exe --client build/client/cipple_client.exe
