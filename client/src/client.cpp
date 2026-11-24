@@ -64,12 +64,12 @@ namespace cipple::client
     {
       throw std::invalid_argument{"client: heartbeat interval must be positive"};
     }
-    auto client = std::shared_ptr<Client>{new Client{context, std::move(handlers), options}};
-    const auto weak = client->weak_from_this();
+    auto client{std::shared_ptr<Client>{new Client{context, std::move(handlers), options}}};
+    const auto weak{client->weak_from_this()};
     client->_connector = tcp::Connector::start_any(context, std::move(endpoints), {
                                                      .on_connected = [weak](std::shared_ptr<tcp::Session> session)
                                                      {
-                                                       if (const auto self = weak.lock())
+                                                       if (const auto self{weak.lock()})
                                                        {
                                                          self->_session = std::move(session);
                                                          self->schedule_heartbeat();
@@ -82,14 +82,14 @@ namespace cipple::client
                                                      .on_message = [weak](
                                                        tcp::Session& session, std::unique_ptr<message::Message> message)
                                                      {
-                                                       if (const auto self = weak.lock())
+                                                       if (const auto self{weak.lock()})
                                                        {
                                                          self->on_message(session, *message);
                                                        }
                                                      },
                                                      .on_disconnected = [weak](const error_code reason)
                                                      {
-                                                       if (const auto self = weak.lock())
+                                                       if (const auto self{weak.lock()})
                                                        {
                                                          self->_heartbeat_timer.reset();
                                                          self->_session.reset();
@@ -130,8 +130,8 @@ namespace cipple::client
 
   void Client::stop()
   {
-    const auto self = shared_from_this();
-    if (auto connector = std::move(_connector))
+    const auto self{shared_from_this()};
+    if (auto connector{std::move(_connector)})
     {
       _heartbeat_timer.reset();
       _session.reset();
@@ -169,7 +169,7 @@ namespace cipple::client
                             std::function<void(error_code, const message::GetResponse *)> on_done)
   {
     send(message::GetRequest{Uuid::generate(), std::move(application_name), std::move(key)}, MessageType::kGetResponse,
-         [on_done = std::move(on_done)](const error_code error, const message::Message* response)
+         [on_done{std::move(on_done)}](const error_code error, const message::Message* response)
          {
            on_done(error, static_cast<const message::GetResponse*>(response));
          });
@@ -178,7 +178,7 @@ namespace cipple::client
   void Client::get(std::string application_name, std::string key, GetHandler on_done)
   {
     get_response(std::move(application_name), std::move(key),
-                 [on_done = std::move(on_done)](const error_code error, const message::GetResponse* reply)
+                 [on_done{std::move(on_done)}](const error_code error, const message::GetResponse* reply)
                  {
                    if (!on_done)
                    {
@@ -197,7 +197,7 @@ namespace cipple::client
   void Client::get_base(std::string application_name, std::string key, GetBaseHandler on_done)
   {
     get_response(std::move(application_name), std::move(key),
-                 [on_done = std::move(on_done)](const error_code error, const message::GetResponse* reply)
+                 [on_done{std::move(on_done)}](const error_code error, const message::GetResponse* reply)
                  {
                    if (!on_done)
                    {
@@ -209,15 +209,17 @@ namespace cipple::client
                      on_done(error, std::nullopt);
                      return;
                    }
-                   const auto& latest = reply->items().back();
-                   if (const auto* increment = std::get_if<EntityMessage::IncrementalUpdate>(&latest.payload()))
+                   const auto& latest{reply->items().back()};
+                   if (const auto* increment{std::get_if<EntityMessage::IncrementalUpdate>(&latest.payload())})
                    {
-                     const auto base = std::ranges::find_if(reply->items(), [&](const EntityMessage& version)
-                     {
-                       return version.uuid() == increment->base_message_uuid && version.operation_type() ==
-                         entity::OperationType::kUpdate
-                         && version.application_name() == latest.application_name() && version.key() == latest.key();
-                     });
+                     const auto base{
+                       std::ranges::find_if(reply->items(), [&](const EntityMessage& version)
+                       {
+                         return version.uuid() == increment->base_message_uuid && version.operation_type() ==
+                           entity::OperationType::kUpdate
+                           && version.application_name() == latest.application_name() && version.key() == latest.key();
+                       })
+                     };
                      if (base == reply->items().end())
                      {
                        on_done(make_error_code(boost::system::errc::protocol_error), std::nullopt);
@@ -256,21 +258,23 @@ namespace cipple::client
       on_done(asio::error::already_started, nullptr);
       return;
     }
-    if (const auto error = _session->async_send(request))
+    if (const auto error{_session->async_send(request)})
     {
       on_done(error, nullptr);
       return;
     }
-    const auto generation = ++_request_generation;
-    auto pending = _pending.emplace(request.uuid(),
-                                    PendingResponse{
-                                      response_type, std::move(on_done), generation,
-                                      asio::steady_timer{_context, timeout.value_or(_request_timeout)}
-                                    }).first;
+    const auto generation{++_request_generation};
+    auto pending{
+      _pending.emplace(request.uuid(),
+                       PendingResponse{
+                         response_type, std::move(on_done), generation,
+                         asio::steady_timer{_context, timeout.value_or(_request_timeout)}
+                       }).first
+    };
     pending->second.deadline.async_wait(
-      [weak = weak_from_this(), uuid = request.uuid(), generation](const error_code error)
+      [weak{weak_from_this()}, uuid{request.uuid()}, generation](const error_code error)
       {
-        if (const auto self = weak.lock(); self && !error)
+        if (const auto self{weak.lock()}; self && !error)
         {
           self->on_request_timeout(uuid, generation);
         }
@@ -285,10 +289,10 @@ namespace cipple::client
     }
     _heartbeat_timer.emplace(_context, *_heartbeat_interval);
     _heartbeat_timer->async_wait(
-      [weak = weak_from_this(), session = std::weak_ptr<tcp::Session>{_session}](const error_code error)
+      [weak{weak_from_this()}, session{std::weak_ptr<tcp::Session>{_session}}](const error_code error)
       {
-        const auto self = weak.lock();
-        const auto connection = session.lock();
+        const auto self{weak.lock()};
+        const auto connection{session.lock()};
         if (!error && self && connection && connection == self->_session)
         {
           self->send_heartbeat();
@@ -299,11 +303,11 @@ namespace cipple::client
   void Client::send_heartbeat()
   {
     send(message::HeartbeatRequest{Uuid::generate()}, MessageType::kHeartbeatResponse,
-         [weak = weak_from_this(), session = std::weak_ptr<tcp::Session>{_session}](
+         [weak{weak_from_this()}, session{std::weak_ptr<tcp::Session>{_session}}](
            const error_code error, const message::Message* response)
          {
-           const auto self = weak.lock();
-           const auto connection = session.lock();
+           const auto self{weak.lock()};
+           const auto connection{session.lock()};
            if (!self || !connection || connection != self->_session)
            {
              return;
@@ -325,11 +329,11 @@ namespace cipple::client
     }
     if (message.type() == MessageType::kDispatchRequest)
     {
-      const auto& dispatch = static_cast<const message::DispatchRequest&>(message);
-      bool handled = false;
+      const auto& dispatch{static_cast<const message::DispatchRequest&>(message)};
+      bool handled{false};
       if (_handlers.on_delivery)
       {
-        if (const auto endpoint = remote_endpoint())
+        if (const auto endpoint{remote_endpoint()})
         {
           handled = _handlers.on_delivery(*endpoint, dispatch);
         }
@@ -346,9 +350,9 @@ namespace cipple::client
       return;
     }
 
-    if (auto pending = _pending.extract(message.uuid()); !pending.empty())
+    if (auto pending{_pending.extract(message.uuid())}; !pending.empty())
     {
-      auto& expected = pending.mapped();
+      auto& expected{pending.mapped()};
       if (message.type() == expected.type)
       {
         expected.on_done({}, &message);
@@ -362,17 +366,17 @@ namespace cipple::client
 
   void Client::on_request_timeout(const Uuid& uuid, const std::uint64_t generation)
   {
-    const auto pending = _pending.find(uuid);
+    const auto pending{_pending.find(uuid)};
     if (pending != _pending.end() && pending->second.generation == generation)
     {
-      auto expired = _pending.extract(pending);
+      auto expired{_pending.extract(pending)};
       expired.mapped().on_done(asio::error::timed_out, nullptr);
     }
   }
 
   void Client::fail_pending(const error_code reason)
   {
-    auto pending = std::move(_pending);
+    auto pending{std::move(_pending)};
     _pending.clear();
     for (const auto& [uuid, request] : pending)
     {

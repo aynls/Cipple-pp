@@ -13,8 +13,8 @@ namespace cipple::message
 
 namespace cipple::tcp
 {
-  inline constexpr std::size_t kFrameLengthPrefixSize = 4;
-  inline constexpr std::size_t kDefaultMaxFrameLength = 16 * 1024 * 1024;
+  inline constexpr std::size_t kFrameLengthPrefixSize{4};
+  inline constexpr std::size_t kDefaultMaxFrameLength{16 * 1024 * 1024};
 
   struct FrameView
   {

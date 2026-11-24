@@ -25,7 +25,7 @@ namespace cipple::tcp
     BufferWriter writer;
     writer.write_i32(0);
     message.encode(writer);
-    const auto length = writer.size() - kFrameLengthPrefixSize;
+    const auto length{writer.size() - kFrameLengthPrefixSize};
     if (length > max_frame_length)
     {
       throw std::length_error{"encode_frame: frame length exceeds limit"};
@@ -45,12 +45,12 @@ namespace cipple::tcp
   {
     validate_frame_limit(max_frame_length);
     BufferReader reader{prefix};
-    const auto signed_length = reader.read_i32();
+    const auto signed_length{reader.read_i32()};
     if (signed_length <= 0)
     {
       throw std::invalid_argument{"frame codec: frame length must be positive"};
     }
-    const auto length = static_cast<std::size_t>(signed_length);
+    const auto length{static_cast<std::size_t>(signed_length)};
     if (length > max_frame_length)
     {
       throw std::length_error{"frame codec: frame length exceeds limit"};
@@ -66,7 +66,7 @@ namespace cipple::tcp
       validate_frame_limit(max_frame_length);
       return std::nullopt;
     }
-    const auto length = decode_frame_length(data.first<kFrameLengthPrefixSize>(), max_frame_length);
+    const auto length{decode_frame_length(data.first<kFrameLengthPrefixSize>(), max_frame_length)};
     if (data.size() - kFrameLengthPrefixSize < length)
     {
       return std::nullopt;

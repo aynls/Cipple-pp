@@ -36,7 +36,7 @@ namespace cipple::client
       Statement(sqlite3* database, const char* sql)
         : _database{database}, _statement{nullptr, sqlite3_finalize}
       {
-        sqlite3_stmt* statement = nullptr;
+        sqlite3_stmt* statement{nullptr};
         check(database, sqlite3_prepare_v2(database, sql, -1, &statement, nullptr));
         _statement.reset(statement);
       }
@@ -52,7 +52,7 @@ namespace cipple::client
 
       void bind_blob(const int index, const std::string_view bytes)
       {
-        const auto* data = bytes.empty() ? "" : bytes.data();
+        const auto* data{bytes.empty() ? "" : bytes.data()};
         check(_database, sqlite3_bind_blob64(_statement.get(), index, data, bytes.size(), SQLITE_TRANSIENT));
       }
 
@@ -63,7 +63,7 @@ namespace cipple::client
 
       void bind_text(const int index, const std::string_view text)
       {
-        const auto* data = text.empty() ? "" : text.data();
+        const auto* data{text.empty() ? "" : text.data()};
         check(_database, sqlite3_bind_text64(_statement.get(), index, data, text.size(), SQLITE_TRANSIENT,
                                              SQLITE_UTF8));
       }
@@ -80,7 +80,7 @@ namespace cipple::client
 
       bool step()
       {
-        const auto result = sqlite3_step(_statement.get());
+        const auto result{sqlite3_step(_statement.get())};
         if (result == SQLITE_ROW)
         {
           return true;
@@ -94,8 +94,8 @@ namespace cipple::client
 
       std::string_view bytes(const int column) const noexcept
       {
-        const auto* data = static_cast<const char*>(sqlite3_column_blob(_statement.get(), column));
-        const auto length = sqlite3_column_bytes(_statement.get(), column);
+        const auto* data{static_cast<const char*>(sqlite3_column_blob(_statement.get(), column))};
+        const auto length{sqlite3_column_bytes(_statement.get(), column)};
         return length == 0 ? std::string_view{} : std::string_view{data, static_cast<std::size_t>(length)};
       }
 
@@ -130,7 +130,7 @@ namespace cipple::client
 
     std::optional<std::string> find_base(Statement& lookup, const EntityMessage& version)
     {
-      const auto* increment = std::get_if<EntityMessage::IncrementalUpdate>(&version.payload());
+      const auto* increment{std::get_if<EntityMessage::IncrementalUpdate>(&version.payload())};
       if (!increment)
       {
         return std::nullopt;
@@ -160,7 +160,7 @@ namespace cipple::client
       }
       if (dispatch.base())
       {
-        const auto value = materialize_delivery(dispatch);
+        const auto value{materialize_delivery(dispatch)};
         if (!value || *value != lookup.bytes(1))
         {
           throw std::runtime_error{"replayed incremental delivery has a different resolved value"};
@@ -172,7 +172,7 @@ namespace cipple::client
     void store_event(Statement& insert, const std::string_view endpoint, const message::DispatchRequest& dispatch,
                      const std::string_view encoded, const std::optional<std::string>& value)
     {
-      const auto& version = dispatch.entity();
+      const auto& version{dispatch.entity()};
       const ResetStatement reset{insert};
       insert.bind_blob(1, version.uuid().bytes());
       insert.bind_blob(2, version.application_name());
@@ -199,7 +199,7 @@ namespace cipple::client
       const ResetStatement reset{latest};
       latest.bind_blob(1, version.application_name());
       latest.bind_blob(2, version.key());
-      const auto& uuid = version.uuid().bytes();
+      const auto& uuid{version.uuid().bytes()};
       const std::string_view version_uuid{reinterpret_cast<const char*>(uuid.data()), uuid.size()};
       return latest.step() && latest.bytes(0) == version_uuid;
     }
@@ -265,11 +265,11 @@ namespace cipple::client
   std::optional<std::string> materialize_delivery(const message::DispatchRequest& dispatch,
                                                   std::optional<std::string_view> saved_base)
   {
-    const auto& version = dispatch.entity();
-    if (const auto* increment = std::get_if<EntityMessage::IncrementalUpdate>(&version.payload()))
+    const auto& version{dispatch.entity()};
+    if (const auto* increment{std::get_if<EntityMessage::IncrementalUpdate>(&version.payload())})
     {
-      const auto& base = *dispatch.base();
-      const auto* full = std::get_if<EntityMessage::Update>(&base.payload());
+      const auto& base{*dispatch.base()};
+      const auto* full{std::get_if<EntityMessage::Update>(&base.payload())};
       if (!full || base.uuid() != increment->base_message_uuid || base.application_name() != version.application_name()
         || base.key() != version.key())
       {
@@ -281,7 +281,7 @@ namespace cipple::client
       }
       return entity::apply_increment(full->value, *increment);
     }
-    if (const auto* update = std::get_if<EntityMessage::Update>(&version.payload()))
+    if (const auto* update{std::get_if<EntityMessage::Update>(&version.payload())})
     {
       return update->value;
     }
@@ -294,8 +294,8 @@ namespace cipple::client
     {
       throw std::invalid_argument{"--state requires a database file"};
     }
-    sqlite3* database = nullptr;
-    const auto result = sqlite3_open_v2(path.c_str(), &database, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+    sqlite3* database{nullptr};
+    const auto result{sqlite3_open_v2(path.c_str(), &database, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr)};
     std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{database, sqlite3_close};
     check(database, result);
     check(database, sqlite3_busy_timeout(database, 5000));
@@ -323,7 +323,7 @@ namespace cipple::client
         PRIMARY KEY(endpoint, application, key)
       ) WITHOUT ROWID;
     )sql");
-    auto statements = std::make_unique<Statements>(database);
+    auto statements{std::make_unique<Statements>(database)};
     _database = db.release();
     _statements = std::move(statements);
   }
@@ -337,7 +337,7 @@ namespace cipple::client
   std::int64_t SubscriptionStore::cursor(const std::string_view endpoint, const std::string_view application,
                                          const std::string_view key) const
   {
-    auto& lookup = _statements->lookup_cursor;
+    auto& lookup{_statements->lookup_cursor};
     const ResetStatement reset{lookup};
     lookup.bind_text(1, endpoint);
     lookup.bind_blob(2, application);
@@ -347,7 +347,7 @@ namespace cipple::client
 
   AcceptedDelivery SubscriptionStore::accept(const std::string_view endpoint, const message::DispatchRequest& dispatch)
   {
-    const auto& version = dispatch.entity();
+    const auto& version{dispatch.entity()};
     if (dispatch.sequence() <= 0)
     {
       throw std::runtime_error{"durable delivery has no replay sequence"};
@@ -359,12 +359,12 @@ namespace cipple::client
     execute(_database, "BEGIN IMMEDIATE;");
     try
     {
-      const bool first_seen = !already_stored(_statements->find_event, dispatch, bytes);
+      const bool first_seen{!already_stored(_statements->find_event, dispatch, bytes)};
       std::optional<std::string> value;
-      bool current = false;
+      bool current{false};
       if (first_seen)
       {
-        const auto base = find_base(_statements->find_base, version);
+        const auto base{find_base(_statements->find_base, version)};
         value = materialize_delivery(dispatch, base);
         store_event(_statements->insert_event, endpoint, dispatch, bytes, value);
         current = is_current(_statements->latest, version);

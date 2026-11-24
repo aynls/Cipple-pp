@@ -42,11 +42,11 @@ namespace cipple::server
 
   struct ServerOptions
   {
-    std::int32_t node_id = 0;
+    std::int32_t node_id{0};
     std::vector<PeerAddress> peers;
-    std::int64_t clock_offset_ms = 0;
+    std::int64_t clock_offset_ms{0};
     // Mesh makes each newly durable replica responsible for further propagation.
-    bool relay_peer_updates = true;
+    bool relay_peer_updates{true};
   };
 
   // Accepts clients and processes their requests serially on one I/O thread.
@@ -97,7 +97,7 @@ namespace cipple::server
     // Seeded before accepting requests, then only accessed by writer tasks.
     std::shared_ptr<hlc::HybridClock> _clock;
     std::shared_ptr<Replication> _replication;
-    std::uint64_t _next_connection_id = 0;
-    bool _replay_scheduled = false;
+    std::uint64_t _next_connection_id{0};
+    bool _replay_scheduled{false};
   };
 }

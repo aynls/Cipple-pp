@@ -35,7 +35,7 @@ namespace cipple::storage
   {
     AppendResult result;
     // Evaluated inside the append transaction against GET's version order.
-    bool is_current = false;
+    bool is_current{false};
   };
 
   enum class MessageUnavailable
@@ -48,16 +48,16 @@ namespace cipple::storage
   // first page so versions with a negative HLC or node id stay reachable.
   struct PendingCursor
   {
-    std::int64_t last_update = 0;
-    std::int32_t last_update_server_id = 0;
+    std::int64_t last_update{0};
+    std::int32_t last_update_server_id{0};
     Uuid uuid{};
   };
 
   struct PendingId
   {
     Uuid uuid{};
-    std::int64_t last_update = 0;
-    std::int32_t last_update_server_id = 0;
+    std::int64_t last_update{0};
+    std::int32_t last_update_server_id{0};
   };
 
   class Storage

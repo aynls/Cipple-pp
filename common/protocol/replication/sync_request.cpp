@@ -48,9 +48,9 @@ namespace cipple::message
 
   std::unique_ptr<SyncRequest> SyncRequest::decode(tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
-    auto entity = entity::EntityMessage::decode(reader);
-    const auto from_id = reader.read_i32();
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+    auto entity{entity::EntityMessage::decode(reader)};
+    const auto from_id{reader.read_i32()};
     std::optional<entity::EntityMessage> base;
     if (entity.operation_type() == entity::OperationType::kIncrementalUpdate)
     {

@@ -31,7 +31,7 @@ namespace
     for (const auto type : {MessageType::kSubscribeRequest, MessageType::kUnsubscribeRequest})
     {
       SCOPED_TRACE(to_byte(type));
-      auto body = message_body(type);
+      auto body{message_body(type)};
       body.write_string("app");
       body.write_string("key");
       if (type == MessageType::kSubscribeRequest)
@@ -46,14 +46,14 @@ namespace
   TEST(MessageProtocolTest, RejectsDispatchWithoutSequence)
   {
     const EntityMessage update{Uuid::generate(), "app", "key", 1, 1, EntityMessage::Update{"value"}};
-    auto body = message_body(MessageType::kDispatchRequest);
+    auto body{message_body(MessageType::kDispatchRequest)};
     update.encode(body);
     EXPECT_THROW(decode_message(body.bytes()), std::out_of_range);
   }
 
   TEST(MessageProtocolTest, RejectsIncrementalSyncWithoutFullBase)
   {
-    auto body = message_body(MessageType::kSyncRequest);
+    auto body{message_body(MessageType::kSyncRequest)};
     const EntityMessage delta{
       Uuid::generate(), "app", "key", 2, 1,
       EntityMessage::IncrementalUpdate{Uuid::generate(), AtomicOperation::kAddEntry, "x"}

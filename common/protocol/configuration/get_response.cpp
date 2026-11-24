@@ -57,24 +57,24 @@ namespace cipple::message
 
   std::unique_ptr<GetResponse> GetResponse::decode(tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
-    auto application_name = reader.read_string();
-    auto key = reader.read_string();
-    auto value = reader.read_string();
-    const auto count = reader.read_i32();
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+    auto application_name{reader.read_string()};
+    auto key{reader.read_string()};
+    auto value{reader.read_string()};
+    const auto count{reader.read_i32()};
     if (count < 0)
     {
       throw std::out_of_range{"GetResponse::decode: negative items count"};
     }
     // The shortest entity is a deletion with empty application/key strings.
-    constexpr std::size_t kMinItemSize = 16 + (8 + 6) + 8 + 8 + 8 + 4;
+    constexpr std::size_t kMinItemSize{16 + (8 + 6) + 8 + 8 + 8 + 4};
     if (static_cast<std::size_t>(count) > reader.remaining() / kMinItemSize)
     {
       throw std::out_of_range{"GetResponse::decode: items count exceeds remaining data"};
     }
     std::vector<entity::EntityMessage> items;
     items.reserve(static_cast<std::size_t>(count));
-    for (std::int32_t i = 0; i < count; ++i)
+    for (std::int32_t i{0}; i < count; ++i)
     {
       items.push_back(entity::EntityMessage::decode(reader));
     }

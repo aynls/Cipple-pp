@@ -17,9 +17,9 @@ namespace cipple::tcp
 {
   struct SessionLimits
   {
-    std::size_t max_frame_length = kDefaultMaxFrameLength;
+    std::size_t max_frame_length{kDefaultMaxFrameLength};
     // Includes each length prefix and the frame currently being written.
-    std::size_t max_queued_bytes = 2 * (kDefaultMaxFrameLength + kFrameLengthPrefixSize);
+    std::size_t max_queued_bytes{2 * (kDefaultMaxFrameLength + kFrameLengthPrefixSize)};
 
     void validate() const;
   };
@@ -28,7 +28,7 @@ namespace cipple::tcp
   class Session final : public std::enable_shared_from_this<Session>
   {
   public:
-    using MessageHandler = std::function<void(Session&, std::unique_ptr<message::Message>)>;
+    using MessageHandler = std::function<void(Session &, std::unique_ptr<message::Message>)>;
     using CloseHandler = std::function<void(boost::system::error_code)>;
     using WriteHandler = std::function<void(boost::system::error_code)>;
 
@@ -72,7 +72,7 @@ namespace cipple::tcp
     std::vector<std::uint8_t> _body;
     std::deque<PendingWrite> _pending_writes;
     std::optional<PendingWrite> _active_write;
-    std::size_t _queued_bytes = 0;
-    bool _closed = false;
+    std::size_t _queued_bytes{0};
+    bool _closed{false};
   };
 }

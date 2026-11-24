@@ -144,7 +144,7 @@ def run_combined(server_bin: Path, client_bin: Path, work: Path, env: dict[str, 
         first = _subscribe(client_bin, state, port_b, work, env, children, commands)
         if not first.wait_for("Subscribed", 8, "stdout") or not first.wait_for("\nbase\n", 8,
                                                                                "both") and "base" not in first.text(
-                "stdout"):
+            "stdout"):
             observations.append(first.text())
             first.kill()
             return [failover, _case("cluster_fault", "fail", "B 上的订阅者没有收到基线。", commands, observations)]

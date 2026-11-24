@@ -71,7 +71,7 @@ namespace
     AppendResult append(const EntityMessage& version, const std::span<const std::int32_t> targets,
                         const EntityMessage* base) override
     {
-      const auto result = _store.append(version, targets, base);
+      const auto result{_store.append(version, targets, base)};
       after_append(result, version);
       return result;
     }
@@ -80,7 +80,7 @@ namespace
                                                const std::span<const std::int32_t> targets,
                                                const EntityMessage* base) override
     {
-      const auto outcome = _store.append_with_outcome(version, targets, base);
+      const auto outcome{_store.append_with_outcome(version, targets, base)};
       after_append(outcome.result, version);
       return outcome;
     }
@@ -172,7 +172,7 @@ namespace
       std::vector<const message::DispatchRequest*> updates;
       for (const auto& received : *inbox)
       {
-        if (const auto* event = dynamic_cast<const message::DispatchRequest*>(received.get()))
+        if (const auto* event{dynamic_cast<const message::DispatchRequest*>(received.get())})
         {
           updates.push_back(event);
         }
@@ -206,19 +206,21 @@ namespace
     {
       asio::ip::tcp::socket socket{_io};
       socket.connect(_server->local_endpoint());
-      auto inbox = std::make_shared<std::vector<std::unique_ptr<message::Message>>>();
-      auto session = tcp::Session::start(std::move(socket),
-                                         [inbox](tcp::Session&, std::unique_ptr<message::Message> received)
-                                         {
-                                           inbox->push_back(std::move(received));
-                                         });
+      auto inbox{std::make_shared<std::vector<std::unique_ptr<message::Message>>>()};
+      auto session{
+        tcp::Session::start(std::move(socket),
+                            [inbox](tcp::Session&, std::unique_ptr<message::Message> received)
+                            {
+                              inbox->push_back(std::move(received));
+                            })
+      };
       return {std::move(session), std::move(inbox)};
     }
 
     bool subscribe(const WireClient& client, const std::optional<std::int64_t> cursor = std::nullopt,
                    std::string key = "key")
     {
-      const auto rpc = Uuid::generate();
+      const auto rpc{Uuid::generate()};
       return client.send(message::SubscribeRequest{rpc, "app", std::move(key), cursor})
         && run_until([&] { return client.reply<message::SubscribeResponse>(rpc); })
         && client.reply<message::SubscribeResponse>(rpc)->success();
@@ -226,7 +228,7 @@ namespace
 
     bool heartbeat(const WireClient& client)
     {
-      const auto rpc = Uuid::generate();
+      const auto rpc{Uuid::generate()};
       return client.send(message::HeartbeatRequest{rpc})
         && run_until([&] { return client.reply<message::HeartbeatResponse>(rpc); });
     }
@@ -246,7 +248,7 @@ namespace
       {
         _io.restart();
       }
-      const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds{3};
+      const auto deadline{std::chrono::steady_clock::now() + std::chrono::seconds{3}};
       while (!complete() && _io.run_one_until(deadline) != 0)
       {
         if (std::chrono::steady_clock::now() >= deadline)
@@ -261,7 +263,7 @@ namespace
     std::expected<Value, error_code> request(Send send)
     {
       using Result = std::expected<Value, error_code>;
-      const auto result = std::make_shared<std::optional<Result>>();
+      const auto result{std::make_shared<std::optional<Result>>()};
       send([result](const error_code error, Value value)
       {
         if (error)
@@ -282,10 +284,12 @@ namespace
 
     testing::AssertionResult reads(Client& client, const std::optional<std::string>& expected)
     {
-      const auto reply = request<std::optional<std::string>>([&](auto done)
-      {
-        client.get("app", "key", std::move(done));
-      });
+      const auto reply{
+        request<std::optional<std::string>>([&](auto done)
+        {
+          client.get("app", "key", std::move(done));
+        })
+      };
       if (!reply)
       {
         return testing::AssertionFailure() << reply.error().message();
@@ -300,24 +304,27 @@ namespace
 
     void execute_sql(const char* sql) const
     {
-      const auto path = _db.u8string();
-      sqlite3* raw_db = nullptr;
-      const auto status = sqlite3_open_v2(reinterpret_cast<const char*>(path.c_str()), &raw_db,
-                                          SQLITE_OPEN_READWRITE, nullptr);
+      const auto path{_db.u8string()};
+      sqlite3* raw_db{nullptr};
+      const auto status{
+        sqlite3_open_v2(reinterpret_cast<const char*>(path.c_str()), &raw_db,
+                        SQLITE_OPEN_READWRITE, nullptr)
+      };
       const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw_db, sqlite3_close};
       ASSERT_EQ(status, SQLITE_OK);
       ASSERT_EQ(sqlite3_exec(db.get(), sql, nullptr, nullptr, nullptr), SQLITE_OK) << sqlite3_errmsg(db.get());
     }
 
-    const std::filesystem::path _db =
-      std::filesystem::temp_directory_path() / ("cipple-single-server-" + Uuid::generate().to_string() + ".db");
+    const std::filesystem::path _db{
+      std::filesystem::temp_directory_path() / ("cipple-single-server-" + Uuid::generate().to_string() + ".db")
+    };
     asio::io_context _io;
     std::shared_ptr<Server> _server;
   };
 
   TEST_F(SingleServerTest, SyncAcknowledgesCommitDespitePostAppendLatestFailure)
   {
-    const auto committed = std::make_shared<bool>(false);
+    const auto committed{std::make_shared<bool>(false)};
     asio::ip::tcp::acceptor offline_peer{_io, {asio::ip::address_v4::loopback(), 0}};
     asio::ip::tcp::acceptor relay_target{_io, {asio::ip::address_v4::loopback(), 0}};
     start_server({.node_id = 1, .peers = {{2, offline_peer.local_endpoint()}, {3, relay_target.local_endpoint()}}},
@@ -336,26 +343,28 @@ namespace
                                                        }
                                                      },
                                                    }));
-    const auto watcher = connect_wire();
+    const auto watcher{connect_wire()};
     ASSERT_TRUE(subscribe(watcher, 0));
-    const auto peer = connect_wire();
+    const auto peer{connect_wire()};
     const EntityMessage version{Uuid::generate(), "app", "key", 1, 2, EntityMessage::Update{"remote"}};
-    const auto sync = [&](const Uuid& rpc)
-    {
-      return peer.send(message::SyncRequest{rpc, version, 2})
-        && run_until([&] { return peer.reply<message::SyncResponse>(rpc); });
+    const auto sync{
+      [&](const Uuid& rpc)
+      {
+        return peer.send(message::SyncRequest{rpc, version, 2})
+          && run_until([&] { return peer.reply<message::SyncResponse>(rpc); });
+      }
     };
-    const auto first = Uuid::generate();
+    const auto first{Uuid::generate()};
     ASSERT_TRUE(sync(first));
     const SqliteStorage disk{_db};
-    const auto sequence = disk.journal_sequence(version.uuid());
+    const auto sequence{disk.journal_sequence(version.uuid())};
     ASSERT_GT(sequence, 0);
     EXPECT_EQ(peer.reply<message::SyncResponse>(first)->result(), message::Result::kSuccess);
-    const auto retry = Uuid::generate();
+    const auto retry{Uuid::generate()};
     ASSERT_TRUE(sync(retry));
     EXPECT_EQ(peer.reply<message::SyncResponse>(retry)->result(), message::Result::kDuplicated);
     EXPECT_EQ(disk.journal_after("app", "key", 0, 2).size(), 1);
-    const auto pending = disk.pending_ids_after(3, std::nullopt, 2);
+    const auto pending{disk.pending_ids_after(3, std::nullopt, 2)};
     ASSERT_EQ(pending.size(), 1);
     EXPECT_EQ(pending.front().uuid, version.uuid());
     ASSERT_TRUE(run_until([&] { return !watcher.dispatches().empty(); }));
@@ -365,17 +374,17 @@ namespace
 
   TEST_F(SingleServerTest, DurableDeliveryUsesNextLogEntryAfterMissedNotification)
   {
-    const auto queries = std::make_shared<int>(0);
+    const auto queries{std::make_shared<int>(0)};
     start_server({}, {}, std::make_unique<ObservedStorage>(_db, ObservedStorage::Hooks{
                                                              .before_replay = [queries](std::string_view, std::int64_t)
                                                              {
                                                                ++*queries;
                                                              },
                                                            }));
-    const auto watcher = connect_wire();
+    const auto watcher{connect_wire()};
     ASSERT_TRUE(subscribe(watcher, 0));
     ASSERT_TRUE(run_until([&] { return *queries == 1; }));
-    const auto cohort = connect_wire();
+    const auto cohort{connect_wire()};
     ASSERT_TRUE(subscribe(cohort, 0));
     ASSERT_TRUE(run_until([&] { return *queries == 2; }));
     SqliteStorage disk{_db};
@@ -384,8 +393,8 @@ namespace
     ASSERT_EQ(disk.append(missed, {}), AppendResult::kInserted);
     ASSERT_EQ(disk.append(unrelated, {}), AppendResult::kInserted);
 
-    const auto publisher = connect_wire();
-    const auto newer = Uuid::generate();
+    const auto publisher{connect_wire()};
+    const auto newer{Uuid::generate()};
     ASSERT_TRUE(publisher.send(message::PutRequest{newer, "app", "key", "newer"}));
     ASSERT_TRUE(run_until([&]
     {
@@ -393,7 +402,7 @@ namespace
         empty();
     }));
     ASSERT_TRUE(publisher.reply<message::PutResponse>(newer)->success());
-    const auto* first = watcher.dispatches().front();
+    const auto* first{watcher.dispatches().front()};
     ASSERT_EQ(first->entity().uuid(), missed.uuid());
     EXPECT_EQ(cohort.dispatches().front()->uuid(), first->uuid());
     EXPECT_EQ(*queries, 3);
@@ -402,10 +411,10 @@ namespace
     EXPECT_EQ(watcher.dispatches().size(), 1);
     watcher.session->close();
 
-    const auto resumed = connect_wire();
+    const auto resumed{connect_wire()};
     ASSERT_TRUE(subscribe(resumed, 0));
     ASSERT_TRUE(run_until([&] { return !resumed.dispatches().empty(); }));
-    const auto* replayed = resumed.dispatches().front();
+    const auto* replayed{resumed.dispatches().front()};
     EXPECT_EQ(replayed->sequence(), first->sequence());
     EXPECT_EQ(replayed->entity(), missed);
     EXPECT_NE(replayed->uuid(), first->uuid());
@@ -413,7 +422,7 @@ namespace
     // Replacing the subscription on the same session invalidates its old ACK.
     ASSERT_TRUE(subscribe(resumed, 0));
     ASSERT_TRUE(run_until([&] { return resumed.dispatches().size() == 2; }));
-    const auto* replacement = resumed.dispatches().back();
+    const auto* replacement{resumed.dispatches().back()};
     EXPECT_EQ(replacement->entity(), missed);
     EXPECT_NE(replacement->uuid(), replayed->uuid());
     ASSERT_TRUE(resumed.send(message::DispatchResponse{replayed->uuid(), true}));
@@ -427,8 +436,8 @@ namespace
 
   TEST_F(SingleServerTest, ReplayReadFailureLeavesCommitAndOtherSubscriptionsIntact)
   {
-    const auto fail_next = std::make_shared<bool>(false);
-    const auto initial_reads = std::make_shared<int>(0);
+    const auto fail_next{std::make_shared<bool>(false)};
+    const auto initial_reads{std::make_shared<int>(0)};
     start_server({}, {}, std::make_unique<ObservedStorage>(_db, ObservedStorage::Hooks{
                                                              .before_replay = [fail_next, initial_reads](
                                                                const std::string_view key, std::int64_t)
@@ -442,16 +451,16 @@ namespace
                                                                }
                                                              },
                                                            }));
-    const auto affected = connect_wire();
-    const auto unaffected = connect_wire();
+    const auto affected{connect_wire()};
+    const auto unaffected{connect_wire()};
     ASSERT_TRUE(subscribe(affected, 0));
     ASSERT_TRUE(subscribe(unaffected, 0, "other"));
     ASSERT_TRUE(run_until([&] { return *initial_reads == 2; }));
 
     *fail_next = true;
-    const auto publisher = connect_wire();
-    const auto failed_delivery = Uuid::generate();
-    const auto other_update = Uuid::generate();
+    const auto publisher{connect_wire()};
+    const auto failed_delivery{Uuid::generate()};
+    const auto other_update{Uuid::generate()};
     ASSERT_TRUE(publisher.send(message::PutRequest{failed_delivery, "app", "key", "committed"}));
     ASSERT_TRUE(publisher.send(message::PutRequest{other_update, "app", "other", "delivered"}));
     ASSERT_TRUE(run_until([&]
@@ -467,7 +476,7 @@ namespace
     const SqliteStorage disk{_db};
     EXPECT_TRUE(disk.find_message(failed_delivery));
 
-    const auto resumed = connect_wire();
+    const auto resumed{connect_wire()};
     ASSERT_TRUE(subscribe(resumed, 0));
     ASSERT_TRUE(run_until([&] { return !resumed.dispatches().empty(); }));
     EXPECT_EQ(resumed.dispatches().front()->entity().uuid(), failed_delivery);
@@ -477,8 +486,8 @@ namespace
   {
     asio::ip::tcp::acceptor peer_endpoint{_io, {asio::ip::address_v4::loopback(), 0}};
     std::promise<void> unblock;
-    const auto gate = unblock.get_future().share();
-    const auto remote_id = Uuid::generate();
+    const auto gate{unblock.get_future().share()};
+    const auto remote_id{Uuid::generate()};
     start_server({.node_id = 1, .peers = {{2, peer_endpoint.local_endpoint()}}},
                  std::make_unique<ObservedStorage>(_db, ObservedStorage::Hooks{
                                                      .after_append = [gate, remote_id](const EntityMessage& version)
@@ -489,25 +498,25 @@ namespace
                                                        }
                                                      },
                                                    }));
-    const auto watcher = connect_wire();
+    const auto watcher{connect_wire()};
     ASSERT_TRUE(subscribe(watcher));
-    const auto peer = connect_wire();
-    constexpr auto high_hlc = (std::int64_t{1} << 62) + 9'000'000'000'000LL * 65'536;
-    constexpr auto rejected_hlc = high_hlc + 100;
+    const auto peer{connect_wire()};
+    constexpr auto high_hlc{(std::int64_t{1} << 62) + 9'000'000'000'000LL * 65'536};
+    constexpr auto rejected_hlc{high_hlc + 100};
     const EntityMessage rejected{Uuid::generate(), "app", "reject", rejected_hlc, 2, EntityMessage::Delete{}};
     ASSERT_NO_FATAL_FAILURE(execute_sql(R"sql(
       CREATE TRIGGER reject_remote BEFORE INSERT ON message
       WHEN NEW.key = CAST('reject' AS BLOB)
       BEGIN SELECT RAISE(ABORT, 'test rejects remote sync'); END;
     )sql"));
-    const auto rejected_rpc = Uuid::generate();
+    const auto rejected_rpc{Uuid::generate()};
     ASSERT_TRUE(peer.send(message::SyncRequest{rejected_rpc, rejected, 2}));
     ASSERT_TRUE(run_until([&] { return peer.reply<message::SyncResponse>(rejected_rpc); }));
     EXPECT_EQ(peer.reply<message::SyncResponse>(rejected_rpc)->result(), message::Result::kRejected);
 
     const EntityMessage remote{remote_id, "app", "key", high_hlc, 2, EntityMessage::Delete{}};
-    const auto sync_id = Uuid::generate();
-    const auto local_id = Uuid::generate();
+    const auto sync_id{Uuid::generate()};
+    const auto local_id{Uuid::generate()};
     ASSERT_TRUE(peer.send(message::SyncRequest{sync_id, remote, 2}));
     ASSERT_TRUE(peer.send(message::PutRequest{local_id, "app", "key", "local"}));
     // This response proves both mutations were enqueued before the remote completion could run.
@@ -520,14 +529,14 @@ namespace
     }));
     EXPECT_EQ(peer.reply<message::SyncResponse>(sync_id)->result(), message::Result::kSuccess);
     EXPECT_TRUE(peer.reply<message::PutResponse>(local_id)->success());
-    const auto* live = watcher.dispatches().back();
+    const auto* live{watcher.dispatches().back()};
     EXPECT_EQ(live->entity().uuid(), local_id);
     EXPECT_GT(live->entity().last_update(), high_hlc);
     EXPECT_LT(live->entity().last_update(), rejected_hlc);
-    const auto get_id = Uuid::generate();
+    const auto get_id{Uuid::generate()};
     ASSERT_TRUE(peer.send(message::GetRequest{get_id, "app", "key"}));
     ASSERT_TRUE(run_until([&] { return peer.reply<message::GetResponse>(get_id); }));
-    const auto& versions = peer.reply<message::GetResponse>(get_id)->items();
+    const auto& versions{peer.reply<message::GetResponse>(get_id)->items()};
     ASSERT_EQ(versions.size(), 1);
     EXPECT_EQ(versions.back().uuid(), live->entity().uuid());
   }
@@ -536,9 +545,9 @@ namespace
   {
     asio::ip::tcp::acceptor offline_peer{_io, {asio::ip::address_v4::loopback(), 0}};
     start_server({.node_id = 1, .peers = {{2, offline_peer.local_endpoint()}}}, {}, {}, {.max_request_bytes = 512});
-    const auto client = connect_wire();
-    const auto put_id = Uuid::generate();
-    const auto sync_id = Uuid::generate();
+    const auto client{connect_wire()};
+    const auto put_id{Uuid::generate()};
+    const auto sync_id{Uuid::generate()};
     const std::string large(2048, 'v');
     const EntityMessage version{Uuid::generate(), "app", "key", 100, 2, EntityMessage::Update{large}};
     ASSERT_TRUE(client.send(message::PutRequest{put_id, "app", "key", large}));
@@ -553,7 +562,7 @@ namespace
     EXPECT_FALSE(disk.find_message(put_id));
     EXPECT_FALSE(disk.find_message(version.uuid()));
 
-    const auto small_id = Uuid::generate();
+    const auto small_id{Uuid::generate()};
     ASSERT_TRUE(client.send(message::PutRequest{small_id, "app", "key", "small"}));
     ASSERT_TRUE(run_until([&] { return client.reply<message::PutResponse>(small_id); }));
     EXPECT_TRUE(client.reply<message::PutResponse>(small_id)->success());
@@ -564,17 +573,19 @@ namespace
   {
     start_server();
     std::vector<EntityMessage> events;
-    const auto writer = Client::start(_io, _server->local_endpoint());
-    const auto reader = Client::start(_io, _server->local_endpoint(), {
-                                        .on_update = [&](const EntityMessage& event) { events.push_back(event); },
-                                      });
+    const auto writer{Client::start(_io, _server->local_endpoint())};
+    const auto reader{
+      Client::start(_io, _server->local_endpoint(), {
+                      .on_update = [&](const EntityMessage& event) { events.push_back(event); },
+                    })
+    };
     ASSERT_TRUE(run_until([&] { return writer->is_connected() && reader->is_connected(); }));
     ASSERT_EQ(request<bool>([&](auto done) { reader->subscribe("app", "key", std::move(done)); }), true);
     ASSERT_TRUE(reads(*reader, std::nullopt));
 
-    const auto uuid = Uuid::generate();
+    const auto uuid{Uuid::generate()};
     const std::string value{"a\0b", 3};
-    const auto put = [&](auto done) { writer->put("app", "key", value, std::move(done), uuid); };
+    const auto put{[&](auto done) { writer->put("app", "key", value, std::move(done), uuid); }};
     ASSERT_EQ(request<bool>(put), true);
     ASSERT_TRUE(SqliteStorage{_db}.find_message(uuid));
     ASSERT_TRUE(reads(*reader, value));
@@ -603,7 +614,7 @@ namespace
     writer->stop();
     _server.reset();
     start_server();
-    const auto fresh = Client::start(_io, _server->local_endpoint());
+    const auto fresh{Client::start(_io, _server->local_endpoint())};
     ASSERT_TRUE(run_until([&] { return fresh->is_connected(); }));
     EXPECT_TRUE(reads(*fresh, std::string{}));
   }
@@ -616,18 +627,20 @@ namespace
       BEGIN SELECT RAISE(ABORT, 'test rejects update'); END;
     )sql"));
     std::vector<Uuid> delivered;
-    const auto writer = Client::start(_io, _server->local_endpoint());
-    const auto reader = Client::start(_io, _server->local_endpoint(), {
-                                        .on_update = [&](const EntityMessage& version)
-                                        {
-                                          delivered.push_back(version.uuid());
-                                        },
-                                      });
+    const auto writer{Client::start(_io, _server->local_endpoint())};
+    const auto reader{
+      Client::start(_io, _server->local_endpoint(), {
+                      .on_update = [&](const EntityMessage& version)
+                      {
+                        delivered.push_back(version.uuid());
+                      },
+                    })
+    };
     ASSERT_TRUE(run_until([&] { return writer->is_connected() && reader->is_connected(); }));
     ASSERT_EQ(request<bool>([&](auto done) { reader->subscribe("app", "key", std::move(done)); }), true);
 
-    const auto uuid = Uuid::generate();
-    const auto put = [&](auto done) { writer->put("app", "key", "value", std::move(done), uuid); };
+    const auto uuid{Uuid::generate()};
+    const auto put{[&](auto done) { writer->put("app", "key", "value", std::move(done), uuid); }};
     ASSERT_EQ(request<bool>(put), false);
     ASSERT_TRUE(reads(*reader, std::nullopt));
     EXPECT_TRUE(delivered.empty());
@@ -642,7 +655,7 @@ namespace
 
   TEST_F(SingleServerTest, ReadsAnExistingIncrementAndOrdersTheNextWriteAfterIt)
   {
-    constexpr std::int64_t future_timestamp = 9'000'000'000'000;
+    constexpr std::int64_t future_timestamp{9'000'000'000'000};
     const EntityMessage base{Uuid::generate(), "app", "key", future_timestamp, 2, EntityMessage::Update{"a-x-x-b"}};
     const EntityMessage increment{
       Uuid::generate(), "app", "key", future_timestamp + 1, 2,
@@ -655,7 +668,7 @@ namespace
     }
 
     start_server();
-    const auto client = Client::start(_io, _server->local_endpoint());
+    const auto client{Client::start(_io, _server->local_endpoint())};
     ASSERT_TRUE(run_until([&] { return client->is_connected(); }));
     ASSERT_TRUE(reads(*client, "a-b"));
     ASSERT_EQ(request<bool>([&](auto done) { client->put("app", "key", "new", std::move(done)); }), true);
@@ -666,9 +679,9 @@ namespace
   {
     cipple::hlc::HybridClock fast{60'000};
     cipple::hlc::HybridClock slow{-60'000};
-    const auto remote = fast.tick();
+    const auto remote{fast.tick()};
     slow.observe(remote);
-    const auto after_sync = slow.tick();
+    const auto after_sync{slow.tick()};
     ASSERT_GT(after_sync, remote);
     cipple::hlc::HybridClock restarted{-60'000};
     restarted.observe(after_sync);

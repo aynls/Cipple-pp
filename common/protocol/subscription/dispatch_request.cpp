@@ -52,9 +52,9 @@ namespace cipple::message
 
   std::unique_ptr<DispatchRequest> DispatchRequest::decode(tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
-    auto entity = entity::EntityMessage::decode(reader);
-    const auto sequence = reader.read_i64();
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+    auto entity{entity::EntityMessage::decode(reader)};
+    const auto sequence{reader.read_i64()};
     std::optional<entity::EntityMessage> base;
     if (entity.operation_type() == entity::OperationType::kIncrementalUpdate)
     {

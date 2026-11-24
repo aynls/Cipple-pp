@@ -57,11 +57,11 @@ namespace cipple::message
   std::unique_ptr<IncrementalUpdateRequest> IncrementalUpdateRequest::decode(
     tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
-    auto application_name = reader.read_string();
-    auto key = reader.read_string();
-    const auto base_message_uuid = Uuid::from_bytes(reader.read_fixed<16>());
-    const auto atomic_operation = entity::atomic_operation_parse(reader.read_string());
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+    auto application_name{reader.read_string()};
+    auto key{reader.read_string()};
+    const auto base_message_uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+    const auto atomic_operation{entity::atomic_operation_parse(reader.read_string())};
     if (!atomic_operation.has_value())
     {
       throw std::out_of_range{"IncrementalUpdateRequest::decode: unknown atomic operation"};

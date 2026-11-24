@@ -23,7 +23,7 @@ namespace cipple::message
 
   std::unique_ptr<UnsubscribeResponse> UnsubscribeResponse::decode(tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
     return std::make_unique < UnsubscribeResponse > (uuid, reader.read_bool());
   }
 }

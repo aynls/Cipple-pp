@@ -14,7 +14,8 @@ namespace cipple::storage
     using entity::EntityMessage;
     using entity::OperationType;
 
-    constexpr char kSchema[] = R"sql(
+    constexpr char kSchema[]{
+      R"sql(
       CREATE TABLE item (
         application_name BLOB NOT NULL,
         key BLOB NOT NULL,
@@ -68,28 +69,33 @@ namespace cipple::storage
       CREATE INDEX ack_by_version
         ON ack(node_id, last_update, last_update_server_id, message_uuid)
         WHERE acknowledged = 0;
-    )sql";
+    )sql"
+    };
 
-    constexpr char kPendingIds[] = R"sql(
+    constexpr char kPendingIds[]{
+      R"sql(
       SELECT message_uuid, last_update, last_update_server_id
       FROM ack
       WHERE node_id = ?1 AND acknowledged = 0
       ORDER BY last_update, last_update_server_id, message_uuid
       LIMIT ?2
-    )sql";
+    )sql"
+    };
 
-    constexpr char kPendingIdsAfter[] = R"sql(
+    constexpr char kPendingIdsAfter[]{
+      R"sql(
       SELECT message_uuid, last_update, last_update_server_id
       FROM ack
       WHERE node_id = ?1 AND acknowledged = 0
         AND (last_update, last_update_server_id, message_uuid) > (?2, ?3, ?4)
       ORDER BY last_update, last_update_server_id, message_uuid
       LIMIT ?5
-    )sql";
+    )sql"
+    };
 
     [[noreturn]] void throw_sqlite(sqlite3* db, const int error, const char* operation)
     {
-      const auto* detail = db ? sqlite3_errmsg(db) : sqlite3_errstr(error);
+      const auto* detail{db ? sqlite3_errmsg(db) : sqlite3_errstr(error)};
       throw std::runtime_error{std::string{"SQLite "} + operation + " (" + std::to_string(error) + "): " + detail};
     }
 
@@ -129,26 +135,26 @@ namespace cipple::storage
 
       void bind(const int index, const Uuid& uuid) const
       {
-        const auto& bytes = uuid.bytes();
+        const auto& bytes{uuid.bytes()};
         bind_bytes(index, {reinterpret_cast<const char*>(bytes.data()), bytes.size()});
       }
 
       void bind_bytes(const int index, const std::string_view value) const
       {
-        const auto* data = value.empty() ? "" : value.data();
+        const auto* data{value.empty() ? "" : value.data()};
         check(db(), sqlite3_bind_blob64(_stmt, index, data, value.size(), SQLITE_TRANSIENT), "bind bytes");
       }
 
       void bind_text(const int index, const std::string_view value) const
       {
-        const auto* data = value.empty() ? "" : value.data();
+        const auto* data{value.empty() ? "" : value.data()};
         check(db(), sqlite3_bind_text64(_stmt, index, data, value.size(), SQLITE_TRANSIENT, SQLITE_UTF8),
               "bind text");
       }
 
       bool next() const
       {
-        const auto result = sqlite3_step(_stmt);
+        const auto result{sqlite3_step(_stmt)};
         if (result == SQLITE_ROW)
         {
           return true;
@@ -185,7 +191,7 @@ namespace cipple::storage
 
       std::string_view bytes(const int column) const
       {
-        const auto* data = static_cast<const char*>(sqlite3_column_blob(_stmt, column));
+        const auto* data{static_cast<const char*>(sqlite3_column_blob(_stmt, column))};
         if (data == nullptr)
         {
           if (sqlite3_errcode(db()) == SQLITE_NOMEM)
@@ -199,7 +205,7 @@ namespace cipple::storage
 
       Uuid uuid(const int column) const
       {
-        const auto value = bytes(column);
+        const auto value{bytes(column)};
         if (value.size() != 16)
         {
           throw std::runtime_error{"Invalid UUID in SQLite message row"};
@@ -216,7 +222,7 @@ namespace cipple::storage
         return sqlite3_db_handle(_stmt);
       }
 
-      sqlite3_stmt* _stmt = nullptr;
+      sqlite3_stmt* _stmt{nullptr};
     };
 
     class Transaction
@@ -300,11 +306,11 @@ namespace cipple::storage
       insert.bind(4, message.last_update());
       insert.bind(5, message.last_update_server_id());
       insert.bind_text(6, entity::operation_type_wire_name(message.operation_type()));
-      if (const auto* update = std::get_if<EntityMessage::Update>(&message.payload()))
+      if (const auto* update{std::get_if<EntityMessage::Update>(&message.payload())})
       {
         insert.bind_bytes(7, update->value);
       }
-      else if (const auto* delta = std::get_if<EntityMessage::IncrementalUpdate>(&message.payload()))
+      else if (const auto* delta{std::get_if<EntityMessage::IncrementalUpdate>(&message.payload())})
       {
         insert.bind_bytes(7, delta->value);
         insert.bind(8, delta->base_message_uuid);
@@ -317,8 +323,9 @@ namespace cipple::storage
     bool ensure_base(sqlite3* db, const EntityMessage& message, const Uuid& base_uuid,
                      const EntityMessage* supplied_base)
     {
-      const auto* supplied_update =
-        supplied_base ? std::get_if<EntityMessage::Update>(&supplied_base->payload()) : nullptr;
+      const auto* supplied_update{
+        supplied_base ? std::get_if<EntityMessage::Update>(&supplied_base->payload()) : nullptr
+      };
       if (base_uuid == message.uuid() ||
         (supplied_base && (!supplied_update || supplied_base->uuid() != base_uuid ||
           supplied_base->application_name() != message.application_name() ||
@@ -374,10 +381,12 @@ namespace cipple::storage
 
     std::string select_messages(const std::string_view suffix, const bool journal = false)
     {
-      std::string sql = R"sql(
+      std::string sql{
+        R"sql(
         SELECT m.uuid, m.application_name, m.key, m.last_update, m.last_update_server_id,
                m.operation_type, m.value, m.base_message_uuid, m.atomic_operation, m.retained
-      )sql";
+      )sql"
+      };
       if (journal)
       {
         sql.append(", d.sequence");
@@ -390,14 +399,14 @@ namespace cipple::storage
     EntityMessage read_message(const Statement& row)
     {
       EntityMessage::Payload payload;
-      const auto operation = entity::operation_type_parse(row.bytes(5));
+      const auto operation{entity::operation_type_parse(row.bytes(5))};
       if (operation == OperationType::kUpdate)
       {
         payload = EntityMessage::Update{std::string{row.bytes(6)}};
       }
       else if (operation == OperationType::kIncrementalUpdate)
       {
-        const auto atomic_operation = entity::atomic_operation_parse(row.bytes(8));
+        const auto atomic_operation{entity::atomic_operation_parse(row.bytes(8))};
         if (!atomic_operation)
         {
           throw std::runtime_error{"Invalid atomic operation in SQLite message row"};
@@ -450,14 +459,16 @@ namespace cipple::storage
 
   SqliteStorage::SqliteStorage(const std::filesystem::path& path)
   {
-    const auto utf8_path = path.u8string();
-    sqlite3* db = nullptr;
-    const auto result = sqlite3_open_v2(reinterpret_cast<const char*>(utf8_path.c_str()), &db,
-                                        SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr);
+    const auto utf8_path{path.u8string()};
+    sqlite3* db{nullptr};
+    const auto result{
+      sqlite3_open_v2(reinterpret_cast<const char*>(utf8_path.c_str()), &db,
+                      SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE, nullptr)
+    };
     _db.reset(db);
     check(db, result, "open database");
     check(db, sqlite3_busy_timeout(db, 5000), "set busy timeout");
-    const bool initialize = is_empty_database(db);
+    const bool initialize{is_empty_database(db)};
     if (!initialize)
     {
       check_schema(db);
@@ -520,7 +531,7 @@ namespace cipple::storage
                                            const EntityMessage* supplied_base, const bool check_current)
   {
     const std::lock_guard lock{_mutex};
-    auto* db = _db.get();
+    auto* db{_db.get()};
     const Transaction transaction{db};
     if (message_exists(db, message.uuid()))
     {
@@ -528,7 +539,7 @@ namespace cipple::storage
     }
 
     insert_item(db, message);
-    const auto* delta = std::get_if<EntityMessage::IncrementalUpdate>(&message.payload());
+    const auto* delta{std::get_if<EntityMessage::IncrementalUpdate>(&message.payload())};
     if (delta && !ensure_base(db, message, delta->base_message_uuid, supplied_base))
     {
       return {AppendResult::kBaseUnavailable};
@@ -587,10 +598,12 @@ namespace cipple::storage
                                                     const std::string_view key) const
   {
     const std::lock_guard lock{_mutex};
-    const auto sql = select_messages(R"sql(
+    const auto sql{
+      select_messages(R"sql(
       WHERE m.application_name = ?1 AND m.key = ?2 AND m.retained = 1
       ORDER BY m.last_update, m.last_update_server_id, m.uuid
-    )sql");
+    )sql")
+    };
     const Statement query{_db.get(), sql.c_str()};
     bind_key(query, application_name, key);
     return read_messages(query);
@@ -600,11 +613,13 @@ namespace cipple::storage
                                                      const std::string_view key) const
   {
     const std::lock_guard lock{_mutex};
-    const auto sql = select_messages(R"sql(
+    const auto sql{
+      select_messages(R"sql(
       WHERE m.application_name = ?1 AND m.key = ?2 AND m.retained = 1
       ORDER BY m.last_update DESC, m.last_update_server_id DESC, m.uuid DESC
       LIMIT 1
-    )sql");
+    )sql")
+    };
     const Statement query{_db.get(), sql.c_str()};
     bind_key(query, application_name, key);
     if (!query.next())
@@ -617,7 +632,7 @@ namespace cipple::storage
   std::expected<EntityMessage, MessageUnavailable> SqliteStorage::find_message(const Uuid& uuid) const
   {
     const std::lock_guard lock{_mutex};
-    const auto sql = select_messages("WHERE m.uuid = ?1");
+    const auto sql{select_messages("WHERE m.uuid = ?1")};
     const Statement query{_db.get(), sql.c_str()};
     query.bind(1, uuid);
     if (!query.next())
@@ -640,7 +655,7 @@ namespace cipple::storage
       return {};
     }
     const std::lock_guard lock{_mutex};
-    const char* const sql = after ? static_cast<const char*>(kPendingIdsAfter) : static_cast<const char*>(kPendingIds);
+    const char* const sql{after ? static_cast<const char*>(kPendingIdsAfter) : static_cast<const char*>(kPendingIds)};
     const Statement query{_db.get(), sql};
     query.bind(1, node_id);
     if (after)
@@ -669,7 +684,7 @@ namespace cipple::storage
       return 0;
     }
     const std::lock_guard lock{_mutex};
-    auto* db = _db.get();
+    auto* db{_db.get()};
     const Transaction transaction{db};
     const Statement update{
       db, R"sql(
@@ -678,7 +693,7 @@ namespace cipple::storage
     )sql"
     };
     update.bind(2, node_id);
-    std::size_t changed = 0;
+    std::size_t changed{0};
     for (const auto& message_uuid : message_uuids)
     {
       update.bind(1, message_uuid);
@@ -698,12 +713,14 @@ namespace cipple::storage
                                                          const std::int64_t limit) const
   {
     const std::lock_guard lock{_mutex};
-    const auto sql = select_messages(R"sql(
+    const auto sql{
+      select_messages(R"sql(
       JOIN delivery_log AS d ON d.message_uuid = m.uuid
       WHERE d.application_name = ?1 AND d.key = ?2 AND d.sequence > ?3 AND m.retained = 1
       ORDER BY d.sequence
       LIMIT ?4
-    )sql", true);
+    )sql", true)
+    };
     const Statement query{_db.get(), sql.c_str()};
     bind_key(query, application_name, key);
     query.bind(3, after);
@@ -739,7 +756,7 @@ namespace cipple::storage
       throw std::invalid_argument{"keep_latest must be positive"};
     }
     const std::lock_guard lock{_mutex};
-    auto* db = _db.get();
+    auto* db{_db.get()};
     const Transaction transaction{db};
     std::unordered_set<Uuid> protected_bases;
     std::vector<Uuid> candidates;
@@ -754,10 +771,10 @@ namespace cipple::storage
       )sql"
       };
       bind_key(query, application_name, key);
-      std::size_t rank = 0;
+      std::size_t rank{0};
       while (query.next())
       {
-        const bool keep = rank < keep_latest || query.integer(2) != 0;
+        const bool keep{rank < keep_latest || query.integer(2) != 0};
         ++rank;
         if (!keep)
         {
@@ -778,7 +795,7 @@ namespace cipple::storage
     )sql"
     };
     const Statement clear_ack{db, "DELETE FROM ack WHERE message_uuid = ?1 AND acknowledged = 1"};
-    std::size_t reclaimed = 0;
+    std::size_t reclaimed{0};
     for (const auto& uuid : candidates)
     {
       if (protected_bases.contains(uuid))

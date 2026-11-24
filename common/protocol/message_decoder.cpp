@@ -62,12 +62,12 @@ namespace cipple::tcp
   std::unique_ptr<message::Message> decode_message(const std::span<const std::uint8_t> body)
   {
     BufferReader reader{body};
-    const auto type = reader.read_u8();
+    const auto type{reader.read_u8()};
     if (type >= kDecoders.size())
     {
       throw std::invalid_argument{"decode_message: unknown message type"};
     }
-    auto result = kDecoders[type](reader);
+    auto result{kDecoders[type](reader)};
     if (reader.remaining() != 0)
     {
       throw std::invalid_argument{"decode_message: trailing bytes in frame body"};

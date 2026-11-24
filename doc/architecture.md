@@ -5,10 +5,13 @@ Cipple++ 按 `(application, key)` 管理配置。每个服务端都能接受写�
 
 ## 组件
 
-- `common/` 提供两端共享的配置版本模型 `entity/`、基础字节读写 `binary/`、消息与帧编解码 `protocol/`，以及 TCP 会话和重连 `tcp/`。
+- `common/` 提供两端共享的配置版本模型 `entity/`、基础字节读写 `binary/`、消息与帧编解码 `protocol/`，以及 TCP 会话和重连
+  `tcp/`。
   协议消息按配置操作、订阅投递、副本同步和心跳分组。[协议实现](../common/protocol) · [TCP 会话](../common/tcp/session.cpp)
-- `server/src/` 处理配置请求并协调节点状态。`clock/` 为写入分配版本时间，`storage/` 管理 SQLite 事务与写队列，`replication/` 调度副本复制，
-  `subscription/` 管理订阅路由、回放与确认。[请求处理](../server/src/server.cpp) · [副本同步](../server/src/replication/replication.cpp)
+- `server/src/` 处理配置请求并协调节点状态。`clock/` 为写入分配版本时间，`storage/` 管理 SQLite 事务与写队列，
+  `replication/` 调度副本复制，
+  `subscription/`
+  管理订阅路由、回放与确认。[请求处理](../server/src/server.cpp) · [副本同步](../server/src/replication/replication.cpp)
 - `client/src/` 实现配置请求、多端点连接与切换。`subscription/` 将持久订阅的事件和游标保存在客户端自己的 SQLite 文件中。
   [命令行入口](../client/main.cpp) · [订阅存储](../client/src/subscription/subscription_store.cpp)
 
@@ -35,7 +38,8 @@ UUID 和内容向原节点重试。
 
 每个目标副本维护自己的待发游标。SQLite 使用待确认行上的覆盖索引，按 `(HLC, node ID, UUID)` 每页读取最多 256 个版本
 ID。游标越过已装载、退避和超帧的记录，实际发送时才加载实体和增量基底。每轮最多读取四页。队列限制待发、在途和待持久确认的记录数，超出内存重试容量的记录仍留在
-SQLite 待发索引中。[补发调度](../server/src/replication/replication.cpp) · [待发索引](../server/src/storage/sqlite_storage.cpp)
+SQLite
+待发索引中。[补发调度](../server/src/replication/replication.cpp) · [待发索引](../server/src/storage/sqlite_storage.cpp)
 
 成功或重复回执立即释放网络发送窗口。该版本保留在待确认队列中，写线程每次最多提交 32 个确认，低流量时由 250
 毫秒轮询触发提交。写入失败时在本地重试确认事务。提交成功后才释放装载名额，防止待发扫描在提交前再次发送该版本。

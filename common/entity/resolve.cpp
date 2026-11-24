@@ -16,8 +16,8 @@ namespace cipple::entity
     }
 
     result.clear();
-    std::size_t pos = 0;
-    for (auto match = base.find(update.value); match != std::string_view::npos; match = base.find(update.value, pos))
+    std::size_t pos{0};
+    for (auto match{base.find(update.value)}; match != std::string_view::npos; match = base.find(update.value, pos))
     {
       result.append(base.substr(pos, match - pos));
       pos = match + update.value.size();

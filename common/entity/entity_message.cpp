@@ -76,7 +76,7 @@ namespace cipple::entity
       break;
     case OperationType::kIncrementalUpdate:
       {
-        const auto& p = std::get<IncrementalUpdate>(_payload);
+        const auto& p{std::get<IncrementalUpdate>(_payload)};
         writer.write_bytes(p.base_message_uuid.bytes());
         writer.write_string(atomic_operation_wire_name(p.atomic_operation));
         writer.write_string(p.value);
@@ -91,14 +91,14 @@ namespace cipple::entity
 
   EntityMessage EntityMessage::decode(tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
-    const auto operation = operation_type_parse(reader.read_string());
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+    const auto operation{operation_type_parse(reader.read_string())};
     if (!operation.has_value())
     {
       throw std::out_of_range{"EntityMessage::decode: unknown operation type"};
     }
-    auto application_name = reader.read_string();
-    auto key = reader.read_string();
+    auto application_name{reader.read_string()};
+    auto key{reader.read_string()};
 
     Payload payload;
     switch (*operation)
@@ -108,8 +108,8 @@ namespace cipple::entity
       break;
     case OperationType::kIncrementalUpdate:
       {
-        const auto base_message_uuid = Uuid::from_bytes(reader.read_fixed<16>());
-        const auto atomic_operation = atomic_operation_parse(reader.read_string());
+        const auto base_message_uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+        const auto atomic_operation{atomic_operation_parse(reader.read_string())};
         if (!atomic_operation.has_value())
         {
           throw std::out_of_range{"EntityMessage::decode: unknown atomic operation"};
@@ -122,8 +122,8 @@ namespace cipple::entity
       break;
     }
 
-    const auto last_update = reader.read_i64();
-    const auto last_update_server_id = reader.read_i32();
+    const auto last_update{reader.read_i64()};
+    const auto last_update_server_id{reader.read_i32()};
     return EntityMessage{
       uuid, std::move(application_name), std::move(key),
       last_update, last_update_server_id, std::move(payload)

@@ -20,10 +20,10 @@ namespace cipple::storage
     std::mutex mutex;
     std::condition_variable wakeup;
     std::deque<std::function<void()>> queue;
-    std::size_t request_tasks = 0;
-    std::size_t request_bytes = 0;
-    std::size_t ack_tasks = 0;
-    bool stopping = false;
+    std::size_t request_tasks{0};
+    std::size_t request_bytes{0};
+    std::size_t ack_tasks{0};
+    bool stopping{false};
   };
 
   // Releases one lane charge when the last reference dies: at task end for
@@ -80,7 +80,7 @@ namespace cipple::storage
     std::shared_ptr<SharedState> _state;
     std::size_t _bytes;
     bool _ack;
-    bool _armed = false;
+    bool _armed{false};
   };
 
   StorageWriter::StorageWriter(std::unique_ptr<Storage> writer, std::unique_ptr<Storage> reader)
@@ -127,9 +127,9 @@ namespace cipple::storage
   bool StorageWriter::enqueue(boost::asio::io_context& back, std::function<void(Storage &)> task,
                               std::function<void()> done, const std::size_t charge_bytes, const bool ack)
   {
-    auto charge = std::make_shared<Charge>(_state, charge_bytes, ack);
-    std::function < void() > item =
-      [this, &back, task = std::move(task), done = std::move(done), charge]() mutable
+    auto charge{std::make_shared<Charge>(_state, charge_bytes, ack)};
+    std::function < void() > item{
+      [this, &back, task{std::move(task)}, done{std::move(done)}, charge]() mutable
       {
         try
         {
@@ -141,9 +141,10 @@ namespace cipple::storage
         }
         if (done)
         {
-          boost::asio::post(back, [done = std::move(done), charge] { done(); });
+          boost::asio::post(back, [done{std::move(done)}, charge] { done(); });
         }
-      };
+      }
+    };
     {
       const std::lock_guard lock{_state->mutex};
       if (_state->stopping)

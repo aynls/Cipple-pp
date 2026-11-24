@@ -68,7 +68,8 @@ SyncResponse 是一个独立帧。代理按请求 UUID 识别要丢弃的回执�
 
 ## 和当前复制实现的对应关系
 
-`server/src/replication/replication.cpp` 中的 `Replication` 使用 RPC UUID 关联每次发送，实体 UUID 用于去重。收到匹配的 SyncResponse
+`server/src/replication/replication.cpp` 中的 `Replication` 使用 RPC UUID 关联每次发送，实体 UUID 用于去重。收到匹配的
+SyncResponse
 且结果为成功或重复（0 或 1）后，源节点将该实体加入批量确认队列。会话仍在时，丢失回复后的第一次重发等待是 2
 秒。丢弃确认的代理会立刻拆掉连接并拒绝后续连接，未完成的尝试回到待发队列。
 

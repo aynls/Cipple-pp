@@ -93,6 +93,6 @@ namespace cipple::server
     storage::StorageWriter& _writer;
     std::int32_t _node_id;
     std::vector<std::unique_ptr<Peer>> _peers;
-    bool _stopped = false;
+    bool _stopped{false};
   };
 }

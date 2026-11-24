@@ -42,16 +42,18 @@ namespace cipple::bench
   // inline：在 I/O 线程上同步 append（旧）；writer：StorageWriter 线程提交（新）。
   int commit(std::span<const char* const> args)
   {
-    const auto ops = arg_count(args, "--ops", 300);
-    const auto db = std::filesystem::temp_directory_path() /
-      ("cipple-commit-bench-" + Uuid::generate().to_string() + ".db");
+    const auto ops{arg_count(args, "--ops", 300)};
+    const auto db{
+      std::filesystem::temp_directory_path() /
+      ("cipple-commit-bench-" + Uuid::generate().to_string() + ".db")
+    };
 
-    for (int variant = 0; variant <= 1; ++variant)
+    for (int variant{0}; variant <= 1; ++variant)
     {
       asio::io_context io;
       std::vector<entity::EntityMessage> messages;
       messages.reserve(ops);
-      for (std::size_t i = 0; i < ops; ++i)
+      for (std::size_t i{0}; i < ops; ++i)
       {
         messages.emplace_back(Uuid::generate(), "bench-app", "bench-key",
                               1'700'000'000'000 + static_cast<std::int64_t>(i), 1,
@@ -60,7 +62,7 @@ namespace cipple::bench
       std::vector<double> probes, commits;
       probes.reserve(ops);
       commits.reserve(ops);
-      std::size_t op = 0;
+      std::size_t op{0};
 
       if (variant == 0)
       {
@@ -72,9 +74,9 @@ namespace cipple::bench
           {
             return;
           }
-          const auto posted = Clock::now();
+          const auto posted{Clock::now()};
           asio::post(io, [&, posted] { probes.push_back(us_since(posted)); });
-          const auto t0 = Clock::now();
+          const auto t0{Clock::now()};
           storage.append(messages[op], {});
           commits.push_back(us_since(t0));
           ++op;
@@ -89,8 +91,8 @@ namespace cipple::bench
           std::make_unique<storage::SqliteStorage>(db),
           std::make_unique<storage::SqliteStorage>(db)
         };
-        std::size_t done_count = 0;
-        auto work = asio::make_work_guard(io);
+        std::size_t done_count{0};
+        auto work{asio::make_work_guard(io)};
         std::function < void() > step;
         step = [&]
         {
@@ -98,10 +100,10 @@ namespace cipple::bench
           {
             return;
           }
-          const auto posted = Clock::now();
+          const auto posted{Clock::now()};
           asio::post(io, [&, posted] { probes.push_back(us_since(posted)); });
-          const auto t0 = Clock::now();
-          const auto i = op++;
+          const auto t0{Clock::now()};
+          const auto i{op++};
           if (!writer.submit(io, [&, i](storage::Storage& s) { s.append(messages[i], {}); },
                              [&, t0]
                              {

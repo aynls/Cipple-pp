@@ -56,8 +56,8 @@ namespace
   struct Options
   {
     std::vector<tcp::endpoint> endpoints;
-    Command command = Command::kGet;
-    Selector selector = Selector::kOrdered;
+    Command command{Command::kGet};
+    Selector selector{Selector::kOrdered};
     std::string application;
     std::string key;
     std::string value;
@@ -67,8 +67,8 @@ namespace
     std::optional<Uuid> request_id;
     std::optional<std::uint64_t> unsubscribe_after;
     std::optional<std::chrono::milliseconds> heartbeat_interval;
-    std::chrono::milliseconds timeout = std::chrono::seconds{10};
-    bool verbose = false;
+    std::chrono::milliseconds timeout{std::chrono::seconds{10}};
+    bool verbose{false};
   };
 
   bool writes_configuration(const Command command) noexcept
@@ -82,8 +82,8 @@ namespace
     if (!value.empty())
     {
       Integer parsed{};
-      const auto* end = value.data() + value.size();
-      const auto result = std::from_chars(value.data(), end, parsed);
+      const auto* end{value.data() + value.size()};
+      const auto result{std::from_chars(value.data(), end, parsed)};
       if (result.ec == std::errc{} && result.ptr == end)
       {
         return parsed;
@@ -94,9 +94,9 @@ namespace
 
   tcp::endpoint parse_endpoint(const std::string_view input)
   {
-    const auto separator = input.rfind(':');
-    const auto port_string = separator == std::string_view::npos ? input : input.substr(separator + 1);
-    const auto port = parse_integer<std::uint16_t>(port_string, "Port must be an integer from 1 to 65535");
+    const auto separator{input.rfind(':')};
+    const auto port_string{separator == std::string_view::npos ? input : input.substr(separator + 1)};
+    const auto port{parse_integer<std::uint16_t>(port_string, "Port must be an integer from 1 to 65535")};
     if (port == 0)
     {
       throw std::invalid_argument{"Port must be an integer from 1 to 65535"};
@@ -106,7 +106,7 @@ namespace
       return {asio::ip::address_v4::loopback(), port};
     }
 
-    auto host = input.substr(0, separator);
+    auto host{input.substr(0, separator)};
     if (host == "localhost")
     {
       return {asio::ip::address_v4::loopback(), port};
@@ -121,7 +121,7 @@ namespace
       throw std::invalid_argument{"Enclose IPv6 addresses in brackets"};
     }
     error_code error;
-    const auto address = asio::ip::make_address(host, error);
+    const auto address{asio::ip::make_address(host, error)};
     if (error)
     {
       throw std::invalid_argument{"Invalid server IP address"};
@@ -134,8 +134,8 @@ namespace
     std::vector<tcp::endpoint> endpoints;
     for (;;)
     {
-      const auto comma = addresses.find(',');
-      auto endpoint = parse_endpoint(addresses.substr(0, comma));
+      const auto comma{addresses.find(',')};
+      auto endpoint{parse_endpoint(addresses.substr(0, comma))};
       if (std::ranges::find(endpoints, endpoint) == endpoints.end())
       {
         endpoints.push_back(std::move(endpoint));
@@ -150,8 +150,8 @@ namespace
 
   std::uint64_t key_hash(const std::string_view application, const std::string_view key) noexcept
   {
-    constexpr std::uint64_t prime = 1099511628211ULL;
-    std::uint64_t hash = 14695981039346656037ULL;
+    constexpr std::uint64_t prime{1099511628211ULL};
+    std::uint64_t hash{14695981039346656037ULL};
     for (const auto part : {application, key})
     {
       for (const auto byte : part)
@@ -166,10 +166,10 @@ namespace
   Options parse_options(const int argc, char** argv)
   {
     Options options;
-    int index = 1;
+    int index{1};
     while (index < argc && std::string_view{argv[index]}.starts_with("--"))
     {
-      const std::string_view flag = argv[index++];
+      const std::string_view flag{argv[index++]};
       if (flag == "--verbose")
       {
         options.verbose = true;
@@ -179,7 +179,7 @@ namespace
       {
         throw std::invalid_argument{"Missing value for " + std::string{flag}};
       }
-      const std::string_view value = argv[index++];
+      const std::string_view value{argv[index++]};
       if (flag == "--state")
       {
         options.state.emplace(value);
@@ -194,7 +194,7 @@ namespace
       }
       else if (flag == "--timeout-ms")
       {
-        const auto milliseconds = parse_integer<std::uint32_t>(value, "Invalid request timeout");
+        const auto milliseconds{parse_integer<std::uint32_t>(value, "Invalid request timeout")};
         if (milliseconds == 0)
         {
           throw std::invalid_argument{"Request timeout must be positive"};
@@ -203,7 +203,7 @@ namespace
       }
       else if (flag == "--heartbeat-ms")
       {
-        const auto milliseconds = parse_integer<std::uint32_t>(value, "Invalid heartbeat interval");
+        const auto milliseconds{parse_integer<std::uint32_t>(value, "Invalid heartbeat interval")};
         if (milliseconds == 0)
         {
           throw std::invalid_argument{"Heartbeat interval must be positive"};
@@ -232,10 +232,10 @@ namespace
       throw std::invalid_argument{"Expected endpoints, command, application and key"};
     }
     options.endpoints = parse_endpoints(argv[index++]);
-    const std::string_view command = argv[index++];
+    const std::string_view command{argv[index++]};
     options.application = argv[index++];
     options.key = argv[index++];
-    const int arguments = argc - index;
+    const int arguments{argc - index};
     if (command == "put" && arguments == 1)
     {
       options.command = Command::kPut;
@@ -284,7 +284,7 @@ namespace
     }
     if (options.selector == Selector::kHash)
     {
-      const auto selected = key_hash(options.application, options.key) % options.endpoints.size();
+      const auto selected{key_hash(options.application, options.key) % options.endpoints.size()};
       std::rotate(options.endpoints.begin(), options.endpoints.begin() +
                   static_cast<std::vector<tcp::endpoint>::difference_type>(selected), options.endpoints.end());
     }
@@ -300,9 +300,9 @@ namespace
 
   int run(const Options& options)
   {
-    const bool watching = options.command == Command::kSubscribe;
-    const bool writing = writes_configuration(options.command);
-    auto request_id = options.request_id;
+    const bool watching{options.command == Command::kSubscribe};
+    const bool writing{writes_configuration(options.command)};
+    auto request_id{options.request_id};
     if (writing && !request_id)
     {
       request_id = Uuid::generate();
@@ -316,84 +316,92 @@ namespace
     asio::io_context context;
     asio::steady_timer deadline{context, options.timeout};
     asio::signal_set signals{context, SIGINT, SIGTERM};
-    int result = 1;
+    int result{1};
     std::shared_ptr<Client> client;
     std::optional<tcp::endpoint> write_endpoint;
-    std::uint64_t deliveries = 0;
-    bool unsubscribing = false;
-    bool finished = false;
+    std::uint64_t deliveries{0};
+    bool unsubscribing{false};
+    bool finished{false};
 
-    const auto finish = [&](const int status)
-    {
-      finished = true;
-      result = status;
-      deadline.cancel();
-      context.stop();
+    const auto finish{
+      [&](const int status)
+      {
+        finished = true;
+        result = status;
+        deadline.cancel();
+        context.stop();
+      }
     };
-    const auto report_error = [&](const error_code error)
-    {
-      if (finished)
+    const auto report_error{
+      [&](const error_code error)
       {
-        return;
-      }
-      if (write_endpoint)
-      {
-        std::cerr << "Write result unknown for " << request_id->to_string() << " at " << *write_endpoint
-          << ". Retry with the same --request-id and endpoint. ";
-      }
-      std::cerr << (error == asio::error::timed_out ? "Request timed out" : error.message()) << '\n';
-      finish(1);
-    };
-    const auto on_status = [&](const error_code error, const bool success)
-    {
-      if (finished)
-      {
-        return;
-      }
-      if (error)
-      {
-        report_error(error);
-      }
-      else if (!success)
-      {
-        std::cerr << "Request rejected\n";
+        if (finished)
+        {
+          return;
+        }
+        if (write_endpoint)
+        {
+          std::cerr << "Write result unknown for " << request_id->to_string() << " at " << *write_endpoint
+            << ". Retry with the same --request-id and endpoint. ";
+        }
+        std::cerr << (error == asio::error::timed_out ? "Request timed out" : error.message()) << '\n';
         finish(1);
       }
-      else
-      {
-        std::cout << "OK\n";
-        finish(0);
-      }
     };
-    const auto unsubscribe = [&]
-    {
-      if (unsubscribing || finished)
+    const auto on_status{
+      [&](const error_code error, const bool success)
       {
-        return;
-      }
-      unsubscribing = true;
-      if (!client || !client->is_connected())
-      {
-        finish(0);
-        return;
-      }
-      client->unsubscribe(options.application, options.key, [&](const error_code error, const bool success)
-      {
+        if (finished)
+        {
+          return;
+        }
         if (error)
         {
           report_error(error);
         }
         else if (!success)
         {
-          std::cerr << "Unsubscribe rejected\n";
+          std::cerr << "Request rejected\n";
           finish(1);
         }
         else
         {
-          std::cout << "Unsubscribed" << std::endl;
+          std::cout << "OK\n";
           finish(0);
         }
-      });
+      }
+    };
+    const auto unsubscribe{
+      [&]
+      {
+        if (unsubscribing || finished)
+        {
+          return;
+        }
+        unsubscribing = true;
+        if (!client || !client->is_connected())
+        {
+          finish(0);
+          return;
+        }
+        client->unsubscribe(options.application, options.key, [&](const error_code error, const bool success)
+        {
+          if (error)
+          {
+            report_error(error);
+          }
+          else if (!success)
+          {
+            std::cerr << "Unsubscribe rejected\n";
+            finish(1);
+          }
+          else
+          {
+            std::cout << "Unsubscribed" << std::endl;
+            finish(0);
+          }
+        });
+      }
     };
 
     deadline.async_wait([&](const error_code error)
@@ -418,108 +426,116 @@ namespace
       }
     });
 
-    const auto display = [&](const error_code error, const std::optional<std::string>& value)
-    {
-      if (finished)
+    const auto display{
+      [&](const error_code error, const std::optional<std::string>& value)
       {
-        return;
-      }
-      if (error)
-      {
-        if (options.endpoints.size() == 1 || client->is_connected())
+        if (finished)
         {
-          report_error(error);
+          return;
+        }
+        if (error)
+        {
+          if (options.endpoints.size() == 1 || client->is_connected())
+          {
+            report_error(error);
+          }
+        }
+        else if (!value)
+        {
+          std::cerr << "Configuration not found\n";
+          finish(1);
+        }
+        else
+        {
+          std::cout << *value << '\n';
+          finish(0);
         }
       }
-      else if (!value)
-      {
-        std::cerr << "Configuration not found\n";
-        finish(1);
-      }
-      else
-      {
-        std::cout << *value << '\n';
-        finish(0);
-      }
     };
-    const auto on_connected = [&]
-    {
-      if (finished)
+    const auto on_connected{
+      [&]
       {
-        return;
-      }
-      const auto endpoint = client->remote_endpoint();
-      if (options.verbose || options.endpoints.size() > 1 || state)
-      {
-        std::cerr << "Connected to " << *endpoint << '\n';
-      }
-      if (writing)
-      {
-        write_endpoint = endpoint;
-      }
+        if (finished)
+        {
+          return;
+        }
+        const auto endpoint{client->remote_endpoint()};
+        if (options.verbose || options.endpoints.size() > 1 || state)
+        {
+          std::cerr << "Connected to " << *endpoint << '\n';
+        }
+        if (writing)
+        {
+          write_endpoint = endpoint;
+        }
 
-      switch (options.command)
-      {
-      case Command::kPut:
-        client->put(options.application, options.key, options.value, on_status, *request_id);
-        break;
-      case Command::kGet:
-        client->get(options.application, options.key, display);
-        break;
-      case Command::kGetBase:
-        client->get_base(options.application, options.key, [&](const error_code error, const std::optional<Uuid> base)
+        switch (options.command)
         {
-          display(error, base ? std::make_optional(base->to_string()) : std::nullopt);
-        });
-        break;
-      case Command::kDelete:
-        client->erase(options.application, options.key, on_status, *request_id);
-        break;
-      case Command::kIncremental:
-        client->incremental_update(options.application, options.key, *options.base, *options.operation,
-                                   options.value, on_status, *request_id);
-        break;
-      case Command::kSubscribe:
-        const auto cursor = state
-                              ? std::make_optional(
-                                state->cursor(endpoint_name(*endpoint), options.application, options.key))
-                              : std::nullopt;
-        client->subscribe(options.application, options.key, [&](const error_code error, const bool success)
-        {
-          if (error)
+        case Command::kPut:
+          client->put(options.application, options.key, options.value, on_status, *request_id);
+          break;
+        case Command::kGet:
+          client->get(options.application, options.key, display);
+          break;
+        case Command::kGetBase:
+          client->get_base(options.application, options.key, [&](const error_code error, const std::optional<Uuid> base)
           {
-            if (client->is_connected())
+            display(error, base ? std::make_optional(base->to_string()) : std::nullopt);
+          });
+          break;
+        case Command::kDelete:
+          client->erase(options.application, options.key, on_status, *request_id);
+          break;
+        case Command::kIncremental:
+          client->incremental_update(options.application, options.key, *options.base, *options.operation,
+                                     options.value, on_status, *request_id);
+          break;
+        case Command::kSubscribe:
+          const auto cursor{
+            state
+              ? std::make_optional(
+                state->cursor(endpoint_name(*endpoint), options.application, options.key))
+              : std::nullopt
+          };
+          client->subscribe(options.application, options.key, [&](const error_code error, const bool success)
+          {
+            if (error)
             {
-              report_error(error);
+              if (client->is_connected())
+              {
+                report_error(error);
+              }
             }
-          }
-          else if (!success)
-          {
-            std::cerr << "Subscribe rejected\n";
-            finish(1);
-          }
-          else
-          {
-            deadline.cancel();
-            std::cout << "Subscribed" << std::endl;
-            if (options.unsubscribe_after && *options.unsubscribe_after == 0)
+            else if (!success)
             {
-              unsubscribe();
+              std::cerr << "Subscribe rejected\n";
+              finish(1);
             }
-          }
-        }, cursor);
-        break;
+            else
+            {
+              deadline.cancel();
+              std::cout << "Subscribed" << std::endl;
+              if (options.unsubscribe_after && *options.unsubscribe_after == 0)
+              {
+                unsubscribe();
+              }
+            }
+          }, cursor);
+          break;
+        }
       }
     };
 
-    auto heartbeat_interval = options.heartbeat_interval;
+    auto heartbeat_interval{options.heartbeat_interval};
     if (state && !heartbeat_interval)
     {
       heartbeat_interval = std::chrono::seconds{1};
     }
-    const auto endpoint_count = static_cast<std::chrono::milliseconds::rep>(options.endpoints.size());
-    const auto connect_timeout = std::clamp(options.timeout / endpoint_count,
-                                            std::chrono::milliseconds{1}, std::chrono::milliseconds{5000});
+    const auto endpoint_count{static_cast<std::chrono::milliseconds::rep>(options.endpoints.size())};
+    const auto connect_timeout{
+      std::clamp(options.timeout / endpoint_count,
+                 std::chrono::milliseconds{1}, std::chrono::milliseconds{5000})
+    };
     client = Client::start_any(context, options.endpoints, {
                                  .on_connected = on_connected,
                                  .on_disconnected = [&](const error_code error)
@@ -538,18 +554,20 @@ namespace
                                    }
                                    try
                                    {
-                                     const auto& version = dispatch.entity();
+                                     const auto& version{dispatch.entity()};
                                      if (!watching || version.application_name() != options.application || version.key()
                                        != options.key)
                                      {
                                        throw std::runtime_error{"Received a version outside the current subscription"};
                                      }
-                                     const auto accepted = state
-                                                             ? state->accept(endpoint_name(endpoint), dispatch)
-                                                             : AcceptedDelivery{
-                                                               true, true,
-                                                               cipple::client::materialize_delivery(dispatch)
-                                                             };
+                                     const auto accepted{
+                                       state
+                                         ? state->accept(endpoint_name(endpoint), dispatch)
+                                         : AcceptedDelivery{
+                                           true, true,
+                                           cipple::client::materialize_delivery(dispatch)
+                                         }
+                                     };
                                      if (accepted.first_seen)
                                      {
                                        if (accepted.current)

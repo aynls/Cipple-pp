@@ -9,11 +9,11 @@ namespace cipple::hlc
 {
   namespace
   {
-    constexpr std::int64_t kEpochOffset = std::int64_t{1} << 62;
-    constexpr std::int64_t kLogicalRange = std::int64_t{1} << 16;
-    constexpr std::int64_t kLargestVersion = std::numeric_limits<std::int64_t>::max();
-    constexpr std::int64_t kLargestMillis = (kLargestVersion - kEpochOffset) / kLogicalRange;
-    constexpr std::int64_t kMaxClockOffsetMs = 86'400'000;
+    constexpr std::int64_t kEpochOffset{std::int64_t{1} << 62};
+    constexpr std::int64_t kLogicalRange{std::int64_t{1} << 16};
+    constexpr std::int64_t kLargestVersion{std::numeric_limits<std::int64_t>::max()};
+    constexpr std::int64_t kLargestMillis{(kLargestVersion - kEpochOffset) / kLogicalRange};
+    constexpr std::int64_t kMaxClockOffsetMs{86'400'000};
 
     std::int64_t pack(const std::int64_t milliseconds)
     {
@@ -40,10 +40,12 @@ namespace cipple::hlc
 
   std::int64_t HybridClock::tick()
   {
-    const auto now = duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).
-      count();
+    const auto now{
+      duration_cast<std::chrono::milliseconds>(std::chrono::system_clock::now().time_since_epoch()).
+      count()
+    };
 
-    const auto physical = pack(now + _offset_ms);
+    const auto physical{pack(now + _offset_ms)};
     if (_last == kLargestVersion)
     {
       throw std::overflow_error{"configuration version exhausted"};

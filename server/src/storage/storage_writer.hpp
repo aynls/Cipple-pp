@@ -30,9 +30,9 @@ namespace cipple::storage
     // bookkeeping. The defaults hold several maximum-frame payloads.
     struct Limits
     {
-      std::size_t max_request_tasks = 1024;
-      std::size_t max_request_bytes = 64u << 20;
-      std::size_t max_ack_tasks = 256;
+      std::size_t max_request_tasks{1024};
+      std::size_t max_request_bytes{64u << 20};
+      std::size_t max_ack_tasks{256};
     };
 
     // writer and reader must be two separate connections to the same

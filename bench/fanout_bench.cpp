@@ -32,9 +32,9 @@ namespace
 
     asio::ip::tcp::socket socket;
     std::array<char, 64 * 1024> buffer{};
-    std::size_t quota = 0;
-    std::size_t received = 0;
-    std::size_t errors = 0;
+    std::size_t quota{0};
+    std::size_t received{0};
+    std::size_t errors{0};
     Clock::time_point done_at{};
   };
 
@@ -56,10 +56,10 @@ namespace cipple::bench
   // “每会话 encode”（旧）与“共享帧”（新）两条真实发送路径。
   int fanout(std::span<const char* const> args)
   {
-    const auto subs = arg_count(args, "--subs", 500);
-    const auto ops = arg_count(args, "--ops", 40);
-    const auto warmup = arg_count(args, "--warmup", 5);
-    const auto value_bytes = arg_count(args, "--value-bytes", 256);
+    const auto subs{arg_count(args, "--subs", 500)};
+    const auto ops{arg_count(args, "--ops", 40)};
+    const auto warmup{arg_count(args, "--warmup", 5)};
+    const auto value_bytes{arg_count(args, "--value-bytes", 256)};
 
     const entity::EntityMessage entity{
       Uuid::generate(), "bench-app", "bench-key",
@@ -67,18 +67,18 @@ namespace cipple::bench
       entity::EntityMessage::Update{std::string(value_bytes, 'x')}
     };
     const message::DispatchRequest dispatch{Uuid::generate(), entity, 7};
-    const auto frame_size = tcp::encode_frame(dispatch).size();
+    const auto frame_size{tcp::encode_frame(dispatch).size()};
 
     asio::io_context server_io, client_io;
     asio::ip::tcp::acceptor acceptor{server_io, {asio::ip::address_v4::loopback(), 0}};
-    const auto endpoint = acceptor.local_endpoint();
+    const auto endpoint{acceptor.local_endpoint()};
 
     std::vector<std::unique_ptr<Client>> clients;
     std::vector<std::shared_ptr<tcp::Session>> sessions;
     std::atomic<std::size_t> connected{0}, accepted{0}, done{0}, send_errors{0};
 
     clients.reserve(subs);
-    for (std::size_t i = 0; i < subs; ++i)
+    for (std::size_t i{0}; i < subs; ++i)
     {
       clients.push_back(std::make_unique<Client>(client_io));
     }
@@ -103,9 +103,9 @@ namespace cipple::bench
       });
     };
 
-    for (std::size_t i = 0; i < subs; ++i)
+    for (std::size_t i{0}; i < subs; ++i)
     {
-      Client& c = *clients[i];
+      Client& c{*clients[i]};
       c.socket.async_connect(endpoint, [&](boost::system::error_code ec)
       {
         if (ec)
@@ -139,14 +139,14 @@ namespace cipple::bench
     }
 
     // variant 0 = 每会话 encode（旧），variant 1 = 共享帧（新）
-    const bool reverse = arg_flag(args, "--reverse");
-    for (int round = 0; round <= 1; ++round)
+    const bool reverse{arg_flag(args, "--reverse")};
+    for (int round{0}; round <= 1; ++round)
     {
-      const int variant = reverse ? 1 - round : round;
+      const int variant{reverse ? 1 - round : round};
       std::vector<double> enqueue_us, drain_ms;
       std::vector<double> arrivals;
       arrivals.reserve(subs);
-      for (std::size_t op = 0; op < ops + warmup; ++op)
+      for (std::size_t op{0}; op < ops + warmup; ++op)
       {
         done.store(0, std::memory_order::release);
         for (auto& c : clients)
@@ -157,7 +157,7 @@ namespace cipple::bench
 
         std::atomic<bool> enqueued{false};
         Clock::time_point start;
-        double enq_us = 0;
+        double enq_us{0};
         asio::post(server_io, [&]
         {
           start = Clock::now();
@@ -173,7 +173,7 @@ namespace cipple::bench
           }
           else
           {
-            const auto frame = tcp::encode_frame_shared(dispatch);
+            const auto frame{tcp::encode_frame_shared(dispatch)};
             for (auto& s : sessions)
             {
               if (s->async_send(frame))
@@ -198,10 +198,10 @@ namespace cipple::bench
           continue;
         }
         enqueue_us.push_back(enq_us);
-        double last = 0;
+        double last{0};
         for (auto& c : clients)
         {
-          const double ms = std::chrono::duration<double, std::milli>(c->done_at - start).count();
+          const double ms{std::chrono::duration < double}, std::milli>(c->done_at - start).count();
           arrivals.push_back(ms);
           last = std::max(last, ms);
         }
@@ -215,7 +215,7 @@ namespace cipple::bench
       std::printf("  drain ms:       p50=%.2f p95=%.2f\n", pct(drain_ms, 0.5), pct(drain_ms, 0.95));
     }
 
-    std::size_t errors = send_errors.load();
+    std::size_t errors{send_errors.load()};
     for (auto& c : clients)
     {
       errors += c->errors;

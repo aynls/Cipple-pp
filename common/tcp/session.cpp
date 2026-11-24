@@ -30,8 +30,10 @@ namespace cipple::tcp
     {
       throw std::invalid_argument{"session: a connected socket and a message handler are required"};
     }
-    auto session = std::shared_ptr<Session>{
-      new Session{std::move(socket), std::move(on_message), std::move(on_close), limits}
+    auto session{
+      std::shared_ptr<Session>{
+        new Session{std::move(socket), std::move(on_message), std::move(on_close), limits}
+      }
     };
     session->read_prefix();
     return session;
@@ -80,7 +82,7 @@ namespace cipple::tcp
     {
       return boost::asio::error::no_buffer_space;
     }
-    const auto size = frame->size();
+    const auto size{frame->size()};
     _pending_writes.push_back({std::move(frame), std::move(on_written)});
     _queued_bytes += size;
     write_next();
@@ -89,7 +91,7 @@ namespace cipple::tcp
 
   void Session::close()
   {
-    const auto self = shared_from_this();
+    const auto self{shared_from_this()};
     finish(boost::asio::error::operation_aborted);
   }
 
@@ -101,7 +103,7 @@ namespace cipple::tcp
   void Session::read_prefix()
   {
     boost::asio::async_read(_socket, boost::asio::buffer(_prefix),
-                            [self = shared_from_this()](const boost::system::error_code error, std::size_t)
+                            [self{shared_from_this()}](const boost::system::error_code error, std::size_t)
                             {
                               self->on_prefix(error);
                             });
@@ -137,7 +139,7 @@ namespace cipple::tcp
 
     _body.resize(body_length);
     boost::asio::async_read(_socket, boost::asio::buffer(_body),
-                            [self = shared_from_this()](const boost::system::error_code read_error, std::size_t)
+                            [self{shared_from_this()}](const boost::system::error_code read_error, std::size_t)
                             {
                               self->on_body(read_error);
                             });
@@ -167,7 +169,7 @@ namespace cipple::tcp
     }
 
     // The message handler may close the session while it is executing.
-    auto handler = std::move(_on_message);
+    auto handler{std::move(_on_message)};
     handler(*this, std::move(message));
     if (!_closed)
     {
@@ -185,7 +187,7 @@ namespace cipple::tcp
     _active_write.emplace(std::move(_pending_writes.front()));
     _pending_writes.pop_front();
     boost::asio::async_write(_socket, boost::asio::buffer(*_active_write->bytes),
-                             [self = shared_from_this()](const boost::system::error_code error, std::size_t)
+                             [self{shared_from_this()}](const boost::system::error_code error, std::size_t)
                              {
                                self->on_write(error);
                              });
@@ -205,7 +207,7 @@ namespace cipple::tcp
       return;
     }
 
-    auto on_written = std::move(_active_write->on_written);
+    auto on_written{std::move(_active_write->on_written)};
     _queued_bytes -= _active_write->bytes->size();
     _active_write.reset();
     if (on_written)
@@ -227,14 +229,14 @@ namespace cipple::tcp
     _on_message = {};
 
     // The in-flight buffer stays valid until the cancelled write completes.
-    if (_active_write && _active_write->on_written)
+    if (_active_write&& _active_write->on_written)
     {
-      auto on_written = std::move(_active_write->on_written);
+      auto on_written{std::move(_active_write->on_written)};
       on_written(reason);
     }
     while (!_pending_writes.empty())
     {
-      auto on_written = std::move(_pending_writes.front().on_written);
+      auto on_written{std::move(_pending_writes.front().on_written)};
       _pending_writes.pop_front();
       if (on_written)
       {
@@ -242,7 +244,7 @@ namespace cipple::tcp
       }
     }
     _queued_bytes = 0;
-    if (auto on_close = std::move(_on_close))
+    if (auto on_close{std::move(_on_close)})
     {
       on_close(reason);
     }

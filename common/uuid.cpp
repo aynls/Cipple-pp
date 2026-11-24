@@ -7,21 +7,25 @@ namespace cipple
 {
   Uuid Uuid::generate()
   {
-    thread_local std::mt19937_64 rng = []
-    {
-      std::random_device rd;
-      std::seed_seq seed{rd(), rd(), rd(), rd()};
-      return std::mt19937_64{seed};
-    }();
+    thread_local std::mt19937_64 rng{
+      []
+      {
+        std::random_device rd;
+        std::seed_seq seed{rd(), rd(), rd(), rd()};
+        return std::mt19937_64{seed};
+      }()
+    };
 
     Uuid id;
-    const auto fill = [&id](const int offset)
-    {
-      auto bits = rng();
-      for (int i = 0; i < 8; ++i)
+    const auto fill{
+      [&id](const int offset)
       {
-        id._bytes[offset + i] = static_cast<std::uint8_t>(bits >> 56);
-        bits <<= 8;
+        auto bits{rng()};
+        for (int i{0}; i < 8; ++i)
+        {
+          id._bytes[offset + i] = static_cast<std::uint8_t>(bits >> 56);
+          bits <<= 8;
+        }
       }
     };
     fill(0);
@@ -47,25 +51,27 @@ namespace cipple
       return std::nullopt;
     }
 
-    const auto hex = [](const char ch) -> int
-    {
-      if (ch >= '0' && ch <= '9') return ch - '0';
-      if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
-      if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
-      return -1;
+    const auto hex{
+      [](const char ch) -> int
+      {
+        if (ch >= '0' && ch <= '9') return ch - '0';
+        if (ch >= 'a' && ch <= 'f') return ch - 'a' + 10;
+        if (ch >= 'A' && ch <= 'F') return ch - 'A' + 10;
+        return -1;
+      }
     };
 
     Uuid id;
-    int nibble = 0;
-    for (std::size_t i = 0; i < 36; ++i)
+    int nibble{0};
+    for (std::size_t i{0}; i < 36; ++i)
     {
-      const char c = text[i];
+      const char c{text[i]};
       if (i == 8 || i == 13 || i == 18 || i == 23)
       {
         if (c != '-') return std::nullopt;
         continue;
       }
-      const int v = hex(c);
+      const int v{hex(c)};
       if (v < 0) return std::nullopt;
       if (nibble % 2 == 0)
       {
@@ -87,10 +93,10 @@ namespace cipple
 
   std::string Uuid::to_string() const
   {
-    static constexpr char kDigits[] = "0123456789abcdef";
+    static constexpr char kDigits[]{"0123456789abcdef"};
     std::string out(36, '-');
-    std::size_t j = 0;
-    for (std::size_t i = 0; i < _bytes.size(); ++i)
+    std::size_t j{0};
+    for (std::size_t i{0}; i < _bytes.size(); ++i)
     {
       if (i == 4 || i == 6 || i == 8 || i == 10)
       {

@@ -24,9 +24,9 @@ namespace cipple::bench
   // 与一次 encode_frame_shared 全体复用（新路径）。
   int codec(std::span<const char* const> args)
   {
-    const auto subs = arg_count(args, "--subs", 500);
-    const auto reps = arg_count(args, "--reps", 100);
-    const auto value_bytes = arg_count(args, "--value-bytes", 256);
+    const auto subs{arg_count(args, "--subs", 500)};
+    const auto reps{arg_count(args, "--reps", 100)};
+    const auto value_bytes{arg_count(args, "--value-bytes", 256)};
 
     const entity::EntityMessage entity{
       Uuid::generate(), "bench-app", "bench-key",
@@ -35,26 +35,26 @@ namespace cipple::bench
     };
     const message::DispatchRequest dispatch{Uuid::generate(), entity, 7};
 
-    volatile std::size_t sink = 0;
-    const auto a0 = Clock::now();
-    for (std::size_t r = 0; r < reps; ++r)
+    volatile std::size_t sink{0};
+    const auto a0{Clock::now()};
+    for (std::size_t r{0}; r < reps; ++r)
     {
-      for (std::size_t i = 0; i < subs; ++i)
+      for (std::size_t i{0}; i < subs; ++i)
       {
         sink += tcp::encode_frame(dispatch).size();
       }
     }
-    const auto per_session = Clock::now() - a0;
+    const auto per_session{Clock::now() - a0};
 
-    const auto b0 = Clock::now();
-    for (std::size_t r = 0; r < reps; ++r)
+    const auto b0{Clock::now()};
+    for (std::size_t r{0}; r < reps; ++r)
     {
       sink += tcp::encode_frame_shared(dispatch)->size();
     }
-    const auto shared = Clock::now() - b0;
+    const auto shared{Clock::now() - b0};
     (void)sink;
 
-    const auto pairs = reps * subs;
+    const auto pairs{reps * subs};
     std::printf("codec bench: subs=%zu reps=%zu value_bytes=%zu\n", subs, reps, value_bytes);
     std::printf("  frame bytes:            %zu\n", tcp::encode_frame(dispatch).size());
     std::printf("  per-session encode:     %8.2f us/pair  (%6.1f us/op, total %.1f ms)\n",

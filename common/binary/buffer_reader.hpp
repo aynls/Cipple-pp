@@ -36,6 +36,6 @@ namespace cipple::tcp
     void require(std::size_t n) const;
 
     std::span<const std::uint8_t> _data;
-    std::size_t _pos = 0;
+    std::size_t _pos{0};
   };
 }

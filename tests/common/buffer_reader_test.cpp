@@ -68,7 +68,7 @@ TEST(BufferReaderTest, ReadBytesIsZeroCopy)
   const std::vector<std::uint8_t> raw{1, 2, 3, 4, 5, 6};
   BufferReader reader{raw};
 
-  const auto view = reader.read_bytes(3);
+  const auto view{reader.read_bytes(3)};
 
   ASSERT_EQ(view.size(), 3);
   EXPECT_EQ(view.data(), raw.data()); // 视图指向原缓冲，无拷贝
@@ -115,12 +115,12 @@ TEST(BufferReaderTest, RoundTripsWithBufferWriter)
 
 TEST(BufferReaderTest, UuidRoundTripsThroughWireFormat)
 {
-  const Uuid original = Uuid::generate();
+  const Uuid original{Uuid::generate()};
   BufferWriter writer;
   writer.write_bytes(original.bytes());
 
   BufferReader reader{writer.bytes()};
-  const Uuid decoded = Uuid::from_bytes(reader.read_fixed<16>());
+  const Uuid decoded{Uuid::from_bytes(reader.read_fixed<16>())};
 
   EXPECT_EQ(decoded, original);
   EXPECT_EQ(reader.remaining(), 0);

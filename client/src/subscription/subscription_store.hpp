@@ -41,7 +41,7 @@ namespace cipple::client
   private:
     struct Statements;
 
-    sqlite3* _database = nullptr;
+    sqlite3* _database{nullptr};
     // Finalized before _database is closed (destructor runs statements down first).
     std::unique_ptr<Statements> _statements;
   };

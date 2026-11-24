@@ -15,7 +15,7 @@ namespace cipple::message
 
   std::unique_ptr<HeartbeatRequest> HeartbeatRequest::decode(tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
-    return std::make_unique < HeartbeatRequest > (uuid);
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+    return std::make_unique<HeartbeatRequest>(uuid);
   }
 }

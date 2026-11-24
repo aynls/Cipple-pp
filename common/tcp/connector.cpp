@@ -34,8 +34,10 @@ namespace cipple::tcp
     {
       throw std::invalid_argument{"connector: connected and message handlers are required"};
     }
-    auto connector = std::shared_ptr<Connector>{
-      new Connector{context, std::move(endpoints), std::move(handlers), options}
+    auto connector{
+      std::shared_ptr<Connector>{
+        new Connector{context, std::move(endpoints), std::move(handlers), options}
+      }
     };
     connector->connect();
     return connector;
@@ -70,7 +72,7 @@ namespace cipple::tcp
     _state = State::kStopped;
     _timer.reset();
     _connecting_socket.reset();
-    if (auto session = std::move(_session))
+    if (auto session{std::move(_session)})
     {
       session->close();
     }
@@ -79,12 +81,12 @@ namespace cipple::tcp
   void Connector::connect()
   {
     _state = State::kConnecting;
-    const auto attempt = ++_attempt;
-    const auto weak = weak_from_this();
+    const auto attempt{++_attempt};
+    const auto weak{weak_from_this()};
     _connecting_socket.emplace(_context);
     _connecting_socket->async_connect(endpoint(), [weak, attempt](const boost::system::error_code error)
     {
-      if (const auto self = weak.lock())
+      if (const auto self{weak.lock()})
       {
         self->on_connect(attempt, error);
       }
@@ -92,7 +94,7 @@ namespace cipple::tcp
     _timer.emplace(_context, _options.connect_timeout);
     _timer->async_wait([weak, attempt](const boost::system::error_code error)
     {
-      if (const auto self = weak.lock(); !error && self)
+      if (const auto self{weak.lock()}; !error && self)
       {
         self->on_connect_timeout(attempt);
       }
@@ -113,20 +115,20 @@ namespace cipple::tcp
       return;
     }
 
-    auto socket = std::move(*_connecting_socket);
+    auto socket{std::move(*_connecting_socket)};
     _connecting_socket.reset();
-    const auto weak = weak_from_this();
+    const auto weak{weak_from_this()};
     _session = Session::start(std::move(socket),
                               [weak](Session& session, std::unique_ptr<message::Message> message)
                               {
-                                if (const auto self = weak.lock())
+                                if (const auto self{weak.lock()})
                                 {
                                   self->_handlers.on_message(session, std::move(message));
                                 }
                               },
                               [weak, attempt](const boost::system::error_code reason)
                               {
-                                if (const auto self = weak.lock())
+                                if (const auto self{weak.lock()})
                                 {
                                   self->on_session_closed(attempt, reason);
                                 }
@@ -164,7 +166,7 @@ namespace cipple::tcp
   {
     _state = State::kWaitingToRetry;
     _endpoint_index = (_endpoint_index + 1) % _endpoints.size();
-    auto delay = _options.initial_retry_delay;
+    auto delay{_options.initial_retry_delay};
     if (++_attempts_in_round == _endpoints.size())
     {
       _attempts_in_round = 0;
@@ -172,9 +174,9 @@ namespace cipple::tcp
       _next_retry_delay += std::min(_next_retry_delay, _options.max_retry_delay - _next_retry_delay);
     }
     _timer.emplace(_context, delay);
-    _timer->async_wait([weak = weak_from_this(), attempt = _attempt](const boost::system::error_code error)
+    _timer->async_wait([weak{weak_from_this()}, attempt{_attempt}](const boost::system::error_code error)
     {
-      if (const auto self = weak.lock();
+      if (const auto self{weak.lock()};
         !error && self && self->_state == State::kWaitingToRetry && self->_attempt == attempt)
       {
         self->connect();

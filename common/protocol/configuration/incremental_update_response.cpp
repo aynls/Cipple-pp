@@ -24,7 +24,7 @@ namespace cipple::message
   std::unique_ptr<IncrementalUpdateResponse> IncrementalUpdateResponse::decode(
     tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
     return std::make_unique < IncrementalUpdateResponse > (uuid, reader.read_bool());
   }
 }

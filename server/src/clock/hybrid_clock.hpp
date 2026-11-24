@@ -14,6 +14,6 @@ namespace cipple::hlc
 
   private:
     std::int64_t _offset_ms;
-    std::int64_t _last = 0;
+    std::int64_t _last{0};
   };
 }

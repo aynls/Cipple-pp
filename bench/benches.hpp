@@ -14,7 +14,7 @@ namespace cipple::bench
   inline std::size_t arg_count(std::span<const char* const> args, std::string_view name,
                                std::size_t fallback)
   {
-    for (std::size_t i = 0; i + 1 < args.size(); ++i)
+    for (std::size_t i{0}; i + 1 < args.size(); ++i)
     {
       if (name == args[i])
       {
@@ -27,7 +27,7 @@ namespace cipple::bench
   inline std::string arg_string(std::span<const char* const> args, std::string_view name,
                                 std::string fallback = {})
   {
-    for (std::size_t i = 0; i + 1 < args.size(); ++i)
+    for (std::size_t i{0}; i + 1 < args.size(); ++i)
     {
       if (name == args[i])
       {

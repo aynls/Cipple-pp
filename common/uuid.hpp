@@ -35,9 +35,9 @@ struct std::hash<cipple::Uuid>
 {
   std::size_t operator()(const cipple::Uuid& id) const noexcept
   {
-    const auto& b = id.bytes();
-    std::uint64_t hi = 0, lo = 0;
-    for (int i = 0; i < 8; ++i)
+    const auto& b{id.bytes()};
+    std::uint64_t hi{0}, lo{0};
+    for (int i{0}; i < 8; ++i)
     {
       hi = (hi << 8) | b[i];
       lo = (lo << 8) | b[i + 8];

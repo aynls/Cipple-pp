@@ -19,8 +19,8 @@ int main(int argc, char** argv)
                  "         [--value-bytes B] [--resume-after SEQ] [--deadline-ms D]\n");
     return 2;
   }
-  const std::string_view command = args[0];
-  const auto rest = args.subspan(1);
+  const std::string_view command{args[0]};
+  const auto rest{args.subspan(1)};
   if (command == "codec")
   {
     return cipple::bench::codec(rest);

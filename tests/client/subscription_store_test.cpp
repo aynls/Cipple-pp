@@ -45,14 +45,15 @@ namespace
       std::filesystem::remove(_db.string() + "-shm", error);
     }
 
-    const std::filesystem::path _db =
-      std::filesystem::temp_directory_path() / ("cipple-subscription-" + Uuid::generate().to_string() + ".db");
+    const std::filesystem::path _db{
+      std::filesystem::temp_directory_path() / ("cipple-subscription-" + Uuid::generate().to_string() + ".db")
+    };
   };
 
   TEST_F(SubscriptionStoreTest, FirstDeliveryIsNewAndCurrent)
   {
     SubscriptionStore store{_db.string()};
-    const auto accepted = store.accept("ep", delivery(update(1, "value"), 7));
+    const auto accepted{store.accept("ep", delivery(update(1, "value"), 7))};
     EXPECT_TRUE(accepted.first_seen);
     EXPECT_TRUE(accepted.current);
     ASSERT_TRUE(accepted.value);
@@ -63,9 +64,9 @@ namespace
   TEST_F(SubscriptionStoreTest, RedeliveryOnlyAdvancesTheCursor)
   {
     SubscriptionStore store{_db.string()};
-    const auto entity = update(1, "value");
+    const auto entity{update(1, "value")};
     ASSERT_TRUE(store.accept("ep", delivery(entity, 1)).first_seen);
-    const auto replayed = store.accept("ep", delivery(entity, 2));
+    const auto replayed{store.accept("ep", delivery(entity, 2))};
     EXPECT_FALSE(replayed.first_seen);
     EXPECT_EQ(store.cursor("ep", "app", "key"), 2);
   }
@@ -78,13 +79,13 @@ namespace
     ASSERT_TRUE(store.accept("ep", delivery(update(2, "second"), 2)).first_seen);
     ASSERT_EQ(store.cursor("ep", "app", "key"), 2);
 
-    sqlite3* handle = nullptr;
-    const auto opened = sqlite3_open_v2(_db.string().c_str(), &handle, SQLITE_OPEN_READWRITE, nullptr);
+    sqlite3* handle{nullptr};
+    const auto opened{sqlite3_open_v2(_db.string().c_str(), &handle, SQLITE_OPEN_READWRITE, nullptr)};
     const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> observer{handle, sqlite3_close};
     ASSERT_EQ(opened, SQLITE_OK);
     ASSERT_EQ(sqlite3_exec(observer.get(), "SELECT sequence FROM client_cursor", nullptr, nullptr, nullptr), SQLITE_OK);
-    int log_frames = -1;
-    int checkpointed_frames = -1;
+    int log_frames{-1};
+    int checkpointed_frames{-1};
     EXPECT_EQ(sqlite3_wal_checkpoint_v2(observer.get(), "main", SQLITE_CHECKPOINT_TRUNCATE,
                                         &log_frames, &checkpointed_frames), SQLITE_OK);
     EXPECT_EQ(log_frames, 0);
@@ -93,12 +94,12 @@ namespace
   TEST_F(SubscriptionStoreTest, ConflictingUuidFailsWithoutWritingAnything)
   {
     SubscriptionStore store{_db.string()};
-    const auto entity = update(1, "first");
+    const auto entity{update(1, "first")};
     ASSERT_TRUE(store.accept("ep", delivery(entity, 1)).first_seen);
     const EntityMessage changed{entity.uuid(), "app", "key", 2, 1, EntityMessage::Update{"different"}};
     EXPECT_THROW(store.accept("ep", delivery(changed, 2)), std::runtime_error);
     EXPECT_EQ(store.cursor("ep", "app", "key"), 1);
-    const auto again = store.accept("ep", delivery(entity, 3));
+    const auto again{store.accept("ep", delivery(entity, 3))};
     EXPECT_FALSE(again.first_seen);
     EXPECT_EQ(store.cursor("ep", "app", "key"), 3);
   }
@@ -106,7 +107,7 @@ namespace
   TEST_F(SubscriptionStoreTest, IncrementChecksCarriedBaseAgainstStoredValue)
   {
     SubscriptionStore store{_db.string()};
-    const auto base = update(1, "a-x-x-b");
+    const auto base{update(1, "a-x-x-b")};
     ASSERT_TRUE(store.accept("ep", delivery(base, 1)).first_seen);
     const EntityMessage delta{
       Uuid::generate(), "app", "key", 2, 1,
@@ -115,7 +116,7 @@ namespace
     const EntityMessage conflicting_base{base.uuid(), "app", "key", 1, 1, EntityMessage::Update{"different"}};
     EXPECT_THROW(store.accept("ep", delivery(delta, 2, conflicting_base)), std::runtime_error);
     EXPECT_EQ(store.cursor("ep", "app", "key"), 1);
-    const auto accepted = store.accept("ep", delivery(delta, 2, base));
+    const auto accepted{store.accept("ep", delivery(delta, 2, base))};
     EXPECT_TRUE(accepted.first_seen);
     ASSERT_TRUE(accepted.value);
     EXPECT_EQ(*accepted.value, "a-b");
@@ -124,12 +125,12 @@ namespace
   TEST_F(SubscriptionStoreTest, IncrementUsesTheCarriedFullBase)
   {
     SubscriptionStore store{_db.string()};
-    const auto base = update(1, "a-x-x-b");
+    const auto base{update(1, "a-x-x-b")};
     const EntityMessage delta{
       Uuid::generate(), "app", "key", 2, 1,
       EntityMessage::IncrementalUpdate{base.uuid(), AtomicOperation::kRemoveEntry, "-x"}
     };
-    const auto accepted = store.accept("ep", delivery(delta, 1, base));
+    const auto accepted{store.accept("ep", delivery(delta, 1, base))};
     EXPECT_TRUE(accepted.first_seen);
     ASSERT_TRUE(accepted.value);
     EXPECT_EQ(*accepted.value, "a-b");
@@ -151,7 +152,7 @@ namespace
     SubscriptionStore store{_db.string()};
     ASSERT_TRUE(store.accept("ep", delivery(update(1, "v"), 1)).first_seen);
     const EntityMessage deletion{Uuid::generate(), "app", "key", 2, 1, EntityMessage::Delete{}};
-    const auto accepted = store.accept("ep", delivery(deletion, 2));
+    const auto accepted{store.accept("ep", delivery(deletion, 2))};
     EXPECT_TRUE(accepted.first_seen);
     EXPECT_TRUE(accepted.current);
     EXPECT_FALSE(accepted.value);
@@ -161,7 +162,7 @@ namespace
   {
     SubscriptionStore store{_db.string()};
     ASSERT_TRUE(store.accept("ep", delivery(update(2, "newer"), 1)).first_seen);
-    const auto older = store.accept("ep", delivery(update(1, "older"), 2));
+    const auto older{store.accept("ep", delivery(update(1, "older"), 2))};
     EXPECT_TRUE(older.first_seen);
     EXPECT_FALSE(older.current);
   }
@@ -169,19 +170,19 @@ namespace
   TEST_F(SubscriptionStoreTest, CursorIsScopedToEndpointApplicationAndKey)
   {
     SubscriptionStore store{_db.string()};
-    const auto entity = update(1, "v");
+    const auto entity{update(1, "v")};
     ASSERT_TRUE(store.accept("ep1", delivery(entity, 5)).first_seen);
     EXPECT_EQ(store.cursor("ep1", "app", "key"), 5);
     EXPECT_EQ(store.cursor("ep2", "app", "key"), 0);
     EXPECT_EQ(store.cursor("ep1", "other", "key"), 0);
-    const auto elsewhere = store.accept("ep2", delivery(entity, 9));
+    const auto elsewhere{store.accept("ep2", delivery(entity, 9))};
     EXPECT_FALSE(elsewhere.first_seen);
     EXPECT_EQ(store.cursor("ep2", "app", "key"), 9);
   }
 
   TEST_F(SubscriptionStoreTest, DedupAndCursorSurviveReopen)
   {
-    const auto entity = update(1, "v");
+    const auto entity{update(1, "v")};
     {
       SubscriptionStore store{_db.string()};
       ASSERT_TRUE(store.accept("ep", delivery(entity, 4)).first_seen);

@@ -32,9 +32,9 @@ namespace cipple::message
 
   std::unique_ptr<DeleteRequest> DeleteRequest::decode(tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
-    auto application_name = reader.read_string();
-    auto key = reader.read_string();
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+    auto application_name{reader.read_string()};
+    auto key{reader.read_string()};
     return std::make_unique < DeleteRequest > (uuid, std::move(application_name), std::move(key));
   }
 }

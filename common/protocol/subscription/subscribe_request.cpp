@@ -10,7 +10,7 @@ namespace cipple::message
 {
   namespace
   {
-    constexpr std::int64_t kLiveSubscription = -1;
+    constexpr std::int64_t kLiveSubscription{-1};
   }
 
   SubscribeRequest::SubscribeRequest(const Uuid uuid, std::string application_name, std::string key,
@@ -50,11 +50,11 @@ namespace cipple::message
 
   std::unique_ptr<SubscribeRequest> SubscribeRequest::decode(tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
-    auto application_name = reader.read_string();
-    auto key = reader.read_string();
-    const auto cursor = reader.read_i64();
-    const auto resume_after = cursor == kLiveSubscription ? std::nullopt : std::optional{cursor};
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+    auto application_name{reader.read_string()};
+    auto key{reader.read_string()};
+    const auto cursor{reader.read_i64()};
+    const auto resume_after{cursor == kLiveSubscription ? std::nullopt : std::optional{cursor}};
     return std::make_unique < SubscribeRequest > (uuid, std::move(application_name), std::move(key), resume_after);
   }
 }

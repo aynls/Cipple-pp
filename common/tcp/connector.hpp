@@ -16,9 +16,9 @@ namespace cipple::tcp
 {
   struct ConnectorOptions
   {
-    std::chrono::steady_clock::duration connect_timeout = std::chrono::seconds{5};
-    std::chrono::steady_clock::duration initial_retry_delay = std::chrono::milliseconds{100};
-    std::chrono::steady_clock::duration max_retry_delay = std::chrono::seconds{5};
+    std::chrono::steady_clock::duration connect_timeout{std::chrono::seconds{5}};
+    std::chrono::steady_clock::duration initial_retry_delay{std::chrono::milliseconds{100}};
+    std::chrono::steady_clock::duration max_retry_delay{std::chrono::seconds{5}};
     SessionLimits session_limits{};
   };
 
@@ -69,15 +69,15 @@ namespace cipple::tcp
 
     boost::asio::io_context& _context;
     std::vector<boost::asio::ip::tcp::endpoint> _endpoints;
-    std::size_t _endpoint_index = 0;
-    std::size_t _attempts_in_round = 0;
+    std::size_t _endpoint_index{0};
+    std::size_t _attempts_in_round{0};
     ConnectorHandlers _handlers;
     ConnectorOptions _options;
     std::chrono::steady_clock::duration _next_retry_delay;
     std::optional<boost::asio::ip::tcp::socket> _connecting_socket;
     std::optional<boost::asio::steady_timer> _timer;
     std::shared_ptr<Session> _session;
-    std::uint64_t _attempt = 0;
-    State _state = State::kWaitingToRetry;
+    std::uint64_t _attempt{0};
+    State _state{State::kWaitingToRetry};
   };
 }

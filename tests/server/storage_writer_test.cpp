@@ -31,8 +31,8 @@ namespace
   using cipple::storage::Storage;
   using cipple::storage::StorageWriter;
 
-  constexpr auto kWait = std::chrono::seconds{10};
-  constexpr std::size_t kRoomyBytes = 256u << 20;
+  constexpr auto kWait{std::chrono::seconds{10}};
+  constexpr std::size_t kRoomyBytes{256u << 20};
 
   class FakeStorage final : public Storage
   {
@@ -103,8 +103,10 @@ namespace
     return std::make_unique<FakeStorage>();
   }
 
-  const std::function<void(Storage &)> kNoop = [](Storage&)
-  {
+  const std::function<void(Storage &)> kNoop{
+    [](Storage&)
+    {
+    }
   };
 
   // Parks the writer thread until open(): entered proves the task is running.
@@ -153,8 +155,8 @@ namespace
       return future.wait_for(kWait) == std::future_status::ready;
     }
 
-    std::shared_ptr<std::promise<void>> promise = std::make_shared<std::promise<void>>();
-    std::future<void> future = promise->get_future();
+    std::shared_ptr<std::promise<void>> promise{std::make_shared<std::promise<void>>()};
+    std::future<void> future{promise->get_future()};
   };
 }
 
@@ -268,7 +270,7 @@ namespace cipple::storage
     Gate gate;
     ASSERT_TRUE(writer.submit(_io, gate.task()));
     ASSERT_TRUE(gate.wait_entered());
-    auto count = std::make_shared<int>(0);
+    auto count{std::make_shared<int>(0)};
     EXPECT_FALSE(writer.submit(_io, [count](Storage&) { ++*count; }, [count] { ++*count; }));
     EXPECT_FALSE(writer.submit_ack(_io, [count](Storage&) { ++*count; }));
     gate.open();
@@ -281,13 +283,13 @@ namespace cipple::storage
   {
     StorageWriter writer{fake_storage(), fake_storage(), _roomy};
     std::vector<int> order;
-    for (int i = 0; i < 64; ++i)
+    for (int i{0}; i < 64; ++i)
     {
       ASSERT_TRUE(writer.submit(_io, [&order, i](Storage&) { order.push_back(i); }));
     }
     writer.stop();
     ASSERT_EQ(order.size(), 64u);
-    for (int i = 0; i < 64; ++i)
+    for (int i{0}; i < 64; ++i)
     {
       EXPECT_EQ(order[static_cast<std::size_t>(i)], i);
     }

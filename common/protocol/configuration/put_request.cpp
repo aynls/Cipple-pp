@@ -40,10 +40,10 @@ namespace cipple::message
 
   std::unique_ptr<PutRequest> PutRequest::decode(tcp::BufferReader& reader)
   {
-    const auto uuid = Uuid::from_bytes(reader.read_fixed<16>());
-    auto application_name = reader.read_string();
-    auto key = reader.read_string();
-    auto value = reader.read_string();
+    const auto uuid{Uuid::from_bytes(reader.read_fixed<16>())};
+    auto application_name{reader.read_string()};
+    auto key{reader.read_string()};
+    auto value{reader.read_string()};
     return std::make_unique < PutRequest > (uuid, std::move(application_name), std::move(key),
       std::move(value));
   }

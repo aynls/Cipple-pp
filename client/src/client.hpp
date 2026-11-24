@@ -54,10 +54,10 @@ namespace cipple::client
 
   struct ClientOptions
   {
-    std::chrono::steady_clock::duration request_timeout = std::chrono::seconds{10};
-    std::chrono::steady_clock::duration connect_timeout = std::chrono::seconds{5};
+    std::chrono::steady_clock::duration request_timeout{std::chrono::seconds{10}};
+    std::chrono::steady_clock::duration connect_timeout{std::chrono::seconds{5}};
     // When set, send a heartbeat after this interval and allow one interval for its reply.
-    std::optional<std::chrono::steady_clock::duration> heartbeat_interval = std::nullopt;
+    std::optional<std::chrono::steady_clock::duration> heartbeat_interval{std::nullopt};
   };
 
   // Use on one I/O thread. Handlers must return normally.
@@ -126,7 +126,7 @@ namespace cipple::client
     std::chrono::steady_clock::duration _request_timeout;
     std::optional<std::chrono::steady_clock::duration> _heartbeat_interval;
     std::optional<boost::asio::steady_timer> _heartbeat_timer;
-    std::uint64_t _request_generation = 0;
+    std::uint64_t _request_generation{0};
     std::unordered_map<Uuid, PendingResponse> _pending;
     std::shared_ptr<tcp::Session> _session;
     std::shared_ptr<tcp::Connector> _connector;

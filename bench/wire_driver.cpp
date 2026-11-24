@@ -51,7 +51,7 @@ namespace
     asio::steady_timer pace{io};
     asio::steady_timer deadline{io};
     std::string app{"bench"}, key{"k"};
-    std::size_t subs = 1, ops = 20, warmup = 5, value_bytes = 256;
+    std::size_t subs{1}, ops{20}, warmup{5}, value_bytes{256};
     std::chrono::milliseconds gap{50}, deadline_ms{15000};
     std::optional<std::int64_t> resume_after;
 
@@ -61,8 +61,8 @@ namespace
     std::vector<Clock::time_point> t_pub;
     std::vector<double> lats;
     std::vector<std::size_t> per_sub;
-    std::size_t ready = 0, errors = 0, seq = 0, responses = 0;
-    bool pub_up = false, started = false, finished = false;
+    std::size_t ready{0}, errors{0}, seq{0}, responses{0};
+    bool pub_up{false}, started{false}, finished{false};
     Clock::time_point wall_start, last_pub, last_recv;
 
     std::size_t total_pairs() const { return subs * ops; }
@@ -71,7 +71,7 @@ namespace
     void connect_all(const asio::ip::tcp::endpoint& endpoint)
     {
       per_sub.assign(subs, 0);
-      for (std::size_t i = 0; i < subs; ++i)
+      for (std::size_t i{0}; i < subs; ++i)
       {
         connect(endpoint, [this, i](std::shared_ptr<Session> s)
         {
@@ -93,8 +93,8 @@ namespace
     void connect(const asio::ip::tcp::endpoint& endpoint,
                  std::function<void(std::shared_ptr<Session>)> on_up)
     {
-      auto socket = std::make_shared<asio::ip::tcp::socket>(io);
-      socket->async_connect(endpoint, [this, socket, on_up = std::move(on_up)](boost::system::error_code ec)
+      auto socket{std::make_shared<asio::ip::tcp::socket>(io)};
+      socket->async_connect(endpoint, [this, socket, on_up{std::move(on_up)}](boost::system::error_code ec)
       {
         if (ec)
         {
@@ -122,7 +122,7 @@ namespace
       {
       case MessageType::kSubscribeResponse:
         {
-          const auto& resp = static_cast<const cipple::message::SubscribeResponse&>(msg);
+          const auto& resp{static_cast<const cipple::message::SubscribeResponse&>(msg)};
           if (resp.success())
           {
             ++ready;
@@ -145,9 +145,9 @@ namespace
         }
       case MessageType::kDispatchRequest:
         {
-          const auto& d = static_cast<const cipple::message::DispatchRequest&>(msg);
+          const auto& d{static_cast<const cipple::message::DispatchRequest&>(msg)};
           last_recv = Clock::now();
-          const auto it = seq_of.find(d.entity().uuid());
+          const auto it{seq_of.find(d.entity().uuid())};
           if (it != seq_of.end() && it->second >= warmup)
           {
             lats.push_back(std::chrono::duration<double, std::milli>(last_recv - t_pub[it->second]).count());
@@ -192,9 +192,9 @@ namespace
       {
         return;
       }
-      const auto id = Uuid::generate();
+      const auto id{Uuid::generate()};
       seq_of.emplace(id, seq);
-      std::string value = "seq " + std::to_string(seq) + " ";
+      std::string value{"seq " + std::to_string(seq) + " "};
       value.append(value_bytes > value.size() ? value_bytes - value.size() : 0, 'x');
       t_pub.push_back(Clock::now());
       last_pub = Clock::now();
@@ -220,9 +220,9 @@ namespace
         return;
       }
       finished = true;
-      const auto wall = std::chrono::duration<double, std::milli>(Clock::now() - wall_start).count();
-      const auto drain = std::chrono::duration<double, std::milli>(last_recv - last_pub).count();
-      const auto coverage = total_pairs() ? lats.size() * 100.0 / total_pairs() : 0.0;
+      const auto wall{std::chrono::duration < double}, std::milli>(Clock::now() - wall_start).count();
+      const auto drain{std::chrono::duration < double}, std::milli>(last_recv - last_pub).count();
+      const auto coverage{total_pairs() ? lats.size() * 100.0 / total_pairs() : 0.0};
       std::printf("drive done: ready=%zu/%zu ops=%zu warmup=%zu\n", ready, subs, ops, warmup);
       std::printf("  pairs %zu/%zu coverage=%.1f%%\n", lats.size(), total_pairs(), coverage);
       std::printf("  pair ms:  p50=%.2f p95=%.2f p99=%.2f\n", pct(lats, 0.5), pct(lats, 0.95), pct(lats, 0.99));
@@ -249,7 +249,7 @@ namespace cipple::bench
   int drive(std::span<const char* const> args)
   {
     Driver d;
-    const auto server = arg_string(args, "--server");
+    const auto server{arg_string(args, "--server")};
     if (server.empty())
     {
       std::fprintf(stderr, "usage: cipple_bench drive --server host:port [--app A] [--key K] "
@@ -257,9 +257,9 @@ namespace cipple::bench
                    "[--resume-after SEQ] [--deadline-ms D]\n");
       return 2;
     }
-    const auto colon = server.rfind(':');
-    const auto host = server.substr(0, colon);
-    const auto port = server.substr(colon + 1);
+    const auto colon{server.rfind(':')};
+    const auto host{server.substr(0, colon)};
+    const auto port{server.substr(colon + 1)};
     d.app = arg_string(args, "--app", "bench");
     d.key = arg_string(args, "--key", "k");
     d.subs = arg_count(args, "--subs", 1);
@@ -268,10 +268,10 @@ namespace cipple::bench
     d.value_bytes = arg_count(args, "--value-bytes", 256);
     d.gap = std::chrono::milliseconds{arg_count(args, "--gap-ms", 50)};
     d.deadline_ms = std::chrono::milliseconds{arg_count(args, "--deadline-ms", 15000)};
-    if (const auto cursor = arg_string(args, "--resume-after"); !cursor.empty())
+    if (const auto cursor{arg_string(args, "--resume-after")}; !cursor.empty())
     {
-      std::int64_t sequence = 0;
-      const auto end = cursor.data() + cursor.size();
+      std::int64_t sequence{0};
+      const auto end{cursor.data() + cursor.size()};
       const auto [ptr, error] = std::from_chars(cursor.data(), end, sequence);
       if (error != std::errc{} || ptr != end || sequence < 0)
       {
@@ -282,7 +282,7 @@ namespace cipple::bench
     }
 
     asio::ip::tcp::resolver resolver{d.io};
-    const auto endpoints = resolver.resolve(host, port);
+    const auto endpoints{resolver.resolve(host, port)};
     d.connect_all(endpoints.begin()->endpoint());
     d.io.run();
     return d.errors == 0 && d.lats.size() == d.total_pairs() ? 0 : 1;

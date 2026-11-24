@@ -56,23 +56,26 @@ namespace
 
     void execute_sql(const char* sql) const
     {
-      const auto path = _path.u8string();
-      sqlite3* raw_db = nullptr;
-      const auto open_status = sqlite3_open_v2(reinterpret_cast<const char*>(path.c_str()), &raw_db,
-                                               SQLITE_OPEN_READWRITE, nullptr);
+      const auto path{_path.u8string()};
+      sqlite3* raw_db{nullptr};
+      const auto open_status{
+        sqlite3_open_v2(reinterpret_cast<const char*>(path.c_str()), &raw_db,
+                        SQLITE_OPEN_READWRITE, nullptr)
+      };
       const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw_db, sqlite3_close};
       ASSERT_EQ(open_status, SQLITE_OK);
       ASSERT_EQ(sqlite3_exec(db.get(), sql, nullptr, nullptr, nullptr), SQLITE_OK) << sqlite3_errmsg(db.get());
     }
 
-    const std::filesystem::path _path =
-      std::filesystem::temp_directory_path() / ("cipple-storage-" + Uuid::generate().to_string() + ".db");
+    const std::filesystem::path _path{
+      std::filesystem::temp_directory_path() / ("cipple-storage-" + Uuid::generate().to_string() + ".db")
+    };
   };
 
   TEST_F(SqliteStorageTest, RestoresHistoryAndPendingTargetsAfterReopen)
   {
-    const auto full = update(1, std::string{"a\0b", 3});
-    const auto delta = increment(full, 2);
+    const auto full{update(1, std::string{"a\0b", 3})};
+    const auto delta{increment(full, 2)};
     const EntityMessage other{Uuid::generate(), "app", "other", 3, -2, EntityMessage::Update{""}};
     const std::array<std::int32_t, 3> targets{7, 8, 8};
     {
@@ -86,26 +89,26 @@ namespace
     }
 
     const SqliteStorage storage{_path};
-    const auto keys = storage.list_keys();
+    const auto keys{storage.list_keys()};
     ASSERT_EQ(keys.size(), 2);
     EXPECT_EQ(keys[0].application_name, "app");
     EXPECT_EQ(keys[0].key, "key");
     EXPECT_EQ(keys[1].key, "other");
-    const auto messages = storage.history("app", "key");
+    const auto messages{storage.history("app", "key")};
     ASSERT_EQ(messages.size(), 2);
     EXPECT_EQ(messages[0].uuid(), full.uuid());
     EXPECT_EQ(std::get<EntityMessage::Update>(messages[0].payload()).value, (std::string{"a\0b", 3}));
     EXPECT_EQ(messages[1].uuid(), delta.uuid());
-    const auto& stored_delta = std::get<EntityMessage::IncrementalUpdate>(messages[1].payload());
+    const auto& stored_delta{std::get<EntityMessage::IncrementalUpdate>(messages[1].payload())};
     EXPECT_EQ(stored_delta.base_message_uuid, full.uuid());
     EXPECT_EQ(stored_delta.atomic_operation, AtomicOperation::kRemoveEntry);
     EXPECT_EQ(stored_delta.value, "removed");
-    const auto empty = storage.find_message(other.uuid());
+    const auto empty{storage.find_message(other.uuid())};
     ASSERT_TRUE(empty);
     EXPECT_EQ(empty->last_update_server_id(), -2);
     EXPECT_TRUE(std::get<EntityMessage::Update>(empty->payload()).value.empty());
     EXPECT_TRUE(storage.pending_ids_after(7, std::nullopt, 1).empty());
-    const auto pending = storage.pending_ids_after(8, std::nullopt, 2);
+    const auto pending{storage.pending_ids_after(8, std::nullopt, 2)};
     ASSERT_EQ(pending.size(), 1);
     EXPECT_EQ(pending[0].uuid, delta.uuid());
   }
@@ -113,7 +116,7 @@ namespace
   TEST_F(SqliteStorageTest, RetryPreservesTheFirstVersionAndAckProgress)
   {
     SqliteStorage storage{_path};
-    const auto full = update(1, "first");
+    const auto full{update(1, "first")};
     const std::array<std::int32_t, 1> original_targets{7};
     ASSERT_EQ(storage.append(full, original_targets), AppendResult::kInserted);
     ASSERT_EQ(storage.mark_acked_batch(7, std::array{full.uuid()}), 1u);
@@ -121,7 +124,7 @@ namespace
     const EntityMessage retry{full.uuid(), "app", "key", 20, 2, EntityMessage::Update{"retry"}};
     const std::array<std::int32_t, 2> retry_targets{7, 8};
     EXPECT_EQ(storage.append(retry, retry_targets), AppendResult::kAlreadyExists);
-    const auto stored = storage.find_message(full.uuid());
+    const auto stored{storage.find_message(full.uuid())};
     ASSERT_TRUE(stored);
     EXPECT_EQ(stored->last_update(), 1);
     EXPECT_EQ(stored->last_update_server_id(), 1);
@@ -132,9 +135,9 @@ namespace
 
   TEST_F(SqliteStorageTest, ReplaysLateOlderVersionsAfterThePersistentCursor)
   {
-    const auto newer = update(20, "newer");
-    const auto older = update(10, "late");
-    std::int64_t cursor = 0;
+    const auto newer{update(20, "newer")};
+    const auto older{update(10, "late")};
+    std::int64_t cursor{0};
     {
       SqliteStorage storage{_path};
       ASSERT_EQ(storage.append(newer, {}), AppendResult::kInserted);
@@ -144,7 +147,7 @@ namespace
       ASSERT_EQ(storage.append(older, {}), AppendResult::kAlreadyExists);
     }
     const SqliteStorage reopened{_path};
-    const auto catch_up = reopened.journal_after("app", "key", cursor, 10);
+    const auto catch_up{reopened.journal_after("app", "key", cursor, 10)};
     ASSERT_EQ(catch_up.size(), 1);
     EXPECT_EQ(catch_up.front().message.uuid(), older.uuid());
     EXPECT_GT(catch_up.front().sequence, cursor);
@@ -164,13 +167,13 @@ namespace
         SELECT RAISE(ABORT, 'test failed second ACK insert');
       END;
     )sql"));
-    const auto full = update(1, "value");
+    const auto full{update(1, "value")};
     const std::array<std::int32_t, 2> targets{21, 22};
     EXPECT_THROW(storage.append(full, targets), std::runtime_error);
 
     const SqliteStorage reopened{_path};
     EXPECT_TRUE(reopened.list_keys().empty());
-    const auto lookup = reopened.find_message(full.uuid());
+    const auto lookup{reopened.find_message(full.uuid())};
     ASSERT_FALSE(lookup);
     EXPECT_EQ(lookup.error(), MessageUnavailable::kMissing);
     EXPECT_TRUE(reopened.pending_ids_after(21, std::nullopt, 1).empty());
@@ -190,19 +193,19 @@ namespace
         INSERT INTO test_commit_guard VALUES (zeroblob(16));
       END;
     )sql"));
-    const auto full = update(1, "value");
+    const auto full{update(1, "value")};
     const std::array<std::int32_t, 1> targets{7};
 
     ASSERT_THROW(storage.append(full, targets), std::runtime_error);
     EXPECT_TRUE(storage.list_keys().empty());
-    const auto lookup = storage.find_message(full.uuid());
+    const auto lookup{storage.find_message(full.uuid())};
     ASSERT_FALSE(lookup);
     EXPECT_EQ(lookup.error(), MessageUnavailable::kMissing);
     EXPECT_TRUE(storage.pending_ids_after(7, std::nullopt, 1).empty());
 
     ASSERT_NO_FATAL_FAILURE(execute_sql("DROP TRIGGER reject_ack_at_commit"));
     ASSERT_EQ(storage.append(full, targets), AppendResult::kInserted);
-    const auto pending = storage.pending_ids_after(7, std::nullopt, 2);
+    const auto pending{storage.pending_ids_after(7, std::nullopt, 2)};
     ASSERT_EQ(pending.size(), 1);
     EXPECT_EQ(pending[0].uuid, full.uuid());
   }
@@ -210,9 +213,9 @@ namespace
   TEST_F(SqliteStorageTest, KeepsPendingIncrementAndItsBaseUntilAllTargetsAck)
   {
     SqliteStorage storage{_path};
-    const auto full = update(1, "base");
-    const auto delta = increment(full, 2);
-    const auto newest = update(3, "newest");
+    const auto full{update(1, "base")};
+    const auto delta{increment(full, 2)};
+    const auto newest{update(3, "newest")};
     const std::array<std::int32_t, 2> targets{7, 8};
     ASSERT_EQ(storage.append(full, {}), AppendResult::kInserted);
     ASSERT_EQ(storage.append(delta, targets), AppendResult::kInserted);
@@ -225,10 +228,10 @@ namespace
     ASSERT_EQ(storage.mark_acked_batch(8, std::array{delta.uuid()}), 1u);
     EXPECT_EQ(storage.recycle("app", "key", 1), 2);
 
-    const auto history = storage.history("app", "key");
+    const auto history{storage.history("app", "key")};
     ASSERT_EQ(history.size(), 1);
     EXPECT_EQ(history[0].uuid(), newest.uuid());
-    const auto recycled_delta = storage.find_message(delta.uuid());
+    const auto recycled_delta{storage.find_message(delta.uuid())};
     ASSERT_FALSE(recycled_delta);
     EXPECT_EQ(recycled_delta.error(), MessageUnavailable::kRecycled);
     EXPECT_EQ(storage.append(delta, targets), AppendResult::kAlreadyExists);
@@ -250,7 +253,7 @@ namespace
     ASSERT_EQ(storage.append(lower_server, {}), AppendResult::kInserted);
     ASSERT_EQ(storage.append(earlier, {}), AppendResult::kInserted);
     ASSERT_EQ(storage.append(other, {}), AppendResult::kInserted);
-    const auto history = storage.history("app", "key");
+    const auto history{storage.history("app", "key")};
     ASSERT_EQ(history.size(), 4);
     EXPECT_EQ(history[0].uuid(), earlier.uuid());
     EXPECT_EQ(history[1].uuid(), lower_server.uuid());
@@ -259,7 +262,7 @@ namespace
     EXPECT_THROW(storage.recycle("app", "key", 0), std::invalid_argument);
     EXPECT_EQ(storage.recycle("app", "key", 1), 3);
 
-    const auto retained = storage.history("app", "key");
+    const auto retained{storage.history("app", "key")};
     ASSERT_EQ(retained.size(), 1);
     EXPECT_EQ(retained[0].uuid(), deletion.uuid());
     EXPECT_TRUE(std::holds_alternative<EntityMessage::Delete>(retained[0].payload()));
@@ -269,9 +272,9 @@ namespace
   TEST_F(SqliteStorageTest, RollsBackRecyclingWhenAckCleanupFails)
   {
     SqliteStorage storage{_path};
-    const auto first = update(1, "first");
-    const auto second = update(2, "second");
-    const auto newest = update(3, "newest");
+    const auto first{update(1, "first")};
+    const auto second{update(2, "second")};
+    const auto newest{update(3, "newest")};
     const std::array<std::int32_t, 1> targets{7};
     ASSERT_EQ(storage.append(first, targets), AppendResult::kInserted);
     ASSERT_EQ(storage.append(second, targets), AppendResult::kInserted);
@@ -287,14 +290,14 @@ namespace
     )sql"));
 
     ASSERT_THROW(storage.recycle("app", "key", 1), std::runtime_error);
-    const auto history = storage.history("app", "key");
+    const auto history{storage.history("app", "key")};
     ASSERT_EQ(history.size(), 3);
     EXPECT_EQ(std::get<EntityMessage::Update>(history[0].payload()).value, "first");
     EXPECT_EQ(std::get<EntityMessage::Update>(history[1].payload()).value, "second");
 
     ASSERT_NO_FATAL_FAILURE(execute_sql("DROP TRIGGER reject_last_ack_delete"));
     ASSERT_EQ(storage.recycle("app", "key", 1), 2);
-    const auto retained = storage.history("app", "key");
+    const auto retained{storage.history("app", "key")};
     ASSERT_EQ(retained.size(), 1);
     EXPECT_EQ(retained[0].uuid(), newest.uuid());
   }
@@ -302,17 +305,17 @@ namespace
   TEST_F(SqliteStorageTest, KeepsBaseForIncrementInsideRetentionWindow)
   {
     SqliteStorage storage{_path};
-    const auto base = update(1, "base");
-    const auto superseded = update(2, "superseded");
-    const auto delta = increment(base, 3);
-    const auto newest = update(4, "newest");
+    const auto base{update(1, "base")};
+    const auto superseded{update(2, "superseded")};
+    const auto delta{increment(base, 3)};
+    const auto newest{update(4, "newest")};
     ASSERT_EQ(storage.append(base, {}), AppendResult::kInserted);
     ASSERT_EQ(storage.append(superseded, {}), AppendResult::kInserted);
     ASSERT_EQ(storage.append(delta, {}), AppendResult::kInserted);
     ASSERT_EQ(storage.append(newest, {}), AppendResult::kInserted);
 
     ASSERT_EQ(storage.recycle("app", "key", 2), 1);
-    const auto history = storage.history("app", "key");
+    const auto history{storage.history("app", "key")};
     ASSERT_EQ(history.size(), 3);
     EXPECT_EQ(history[0].uuid(), base.uuid());
     EXPECT_EQ(history[1].uuid(), delta.uuid());
@@ -320,16 +323,16 @@ namespace
     EXPECT_EQ(history[2].uuid(), newest.uuid());
 
     ASSERT_EQ(storage.recycle("app", "key", 1), 2);
-    const auto retained = storage.history("app", "key");
+    const auto retained{storage.history("app", "key")};
     ASSERT_EQ(retained.size(), 1);
     EXPECT_EQ(retained[0].uuid(), newest.uuid());
   }
 
   TEST_F(SqliteStorageTest, AcceptsLateIncrementWithRecycledBase)
   {
-    const auto full = update(1, "base");
-    const auto newer = update(2, "newer");
-    const auto late_delta = increment(full, 3);
+    const auto full{update(1, "base")};
+    const auto newer{update(2, "newer")};
+    const auto late_delta{increment(full, 3)};
     const EntityMessage mismatched{full.uuid(), "app", "key", 10, 1, EntityMessage::Update{"different version"}};
     {
       SqliteStorage storage{_path};
@@ -340,7 +343,7 @@ namespace
 
     SqliteStorage storage{_path};
     EXPECT_EQ(storage.append(full, {}), AppendResult::kAlreadyExists);
-    const auto recycled = storage.find_message(full.uuid());
+    const auto recycled{storage.find_message(full.uuid())};
     ASSERT_FALSE(recycled);
     EXPECT_EQ(recycled.error(), MessageUnavailable::kRecycled);
     EXPECT_EQ(storage.append(late_delta, {}), AppendResult::kBaseUnavailable);
@@ -348,7 +351,7 @@ namespace
 
     ASSERT_EQ(storage.append(late_delta, {}, &full), AppendResult::kInserted);
     EXPECT_EQ(storage.recycle("app", "key", 1), 1);
-    const auto history = storage.history("app", "key");
+    const auto history{storage.history("app", "key")};
     ASSERT_EQ(history.size(), 2);
     EXPECT_EQ(history[0].uuid(), full.uuid());
     EXPECT_EQ(std::get<EntityMessage::Update>(history[0].payload()).value, "base");
@@ -358,8 +361,8 @@ namespace
   TEST_F(SqliteStorageTest, RollsBackSuppliedBaseWithIncrement)
   {
     SqliteStorage storage{_path};
-    const auto full = update(1, "base");
-    const auto delta = increment(full, 2);
+    const auto full{update(1, "base")};
+    const auto delta{increment(full, 2)};
     const std::array<std::int32_t, 1> targets{7};
     ASSERT_NO_FATAL_FAILURE(execute_sql(R"sql(
       CREATE TRIGGER reject_target BEFORE INSERT ON ack
@@ -376,7 +379,7 @@ namespace
 
     EXPECT_EQ(storage.append(delta, targets, &full), AppendResult::kInserted);
     EXPECT_TRUE(storage.find_message(full.uuid()));
-    const auto pending = storage.pending_ids_after(7, std::nullopt, 2);
+    const auto pending{storage.pending_ids_after(7, std::nullopt, 2)};
     ASSERT_EQ(pending.size(), 1);
     EXPECT_EQ(pending[0].uuid, delta.uuid());
   }
@@ -391,20 +394,22 @@ namespace
 
     EXPECT_EQ(storage.append(increment(other, 2), {}), AppendResult::kBaseUnavailable);
     EXPECT_EQ(storage.append(increment(deletion, 2), {}), AppendResult::kBaseUnavailable);
-    const auto history = storage.history("app", "key");
+    const auto history{storage.history("app", "key")};
     ASSERT_EQ(history.size(), 1);
     EXPECT_EQ(history[0].uuid(), deletion.uuid());
   }
 
   std::string schema_catalog(const std::filesystem::path& path)
   {
-    const auto utf8 = path.u8string();
-    sqlite3* raw = nullptr;
-    const auto opened = sqlite3_open_v2(reinterpret_cast<const char*>(utf8.c_str()), &raw, SQLITE_OPEN_READONLY,
-                                        nullptr);
+    const auto utf8{path.u8string()};
+    sqlite3* raw{nullptr};
+    const auto opened{
+      sqlite3_open_v2(reinterpret_cast<const char*>(utf8.c_str()), &raw, SQLITE_OPEN_READONLY,
+                      nullptr)
+    };
     const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw, sqlite3_close};
     EXPECT_EQ(opened, SQLITE_OK);
-    sqlite3_stmt* statement = nullptr;
+    sqlite3_stmt* statement{nullptr};
     EXPECT_EQ(sqlite3_prepare_v2(db.get(),
                                  "SELECT type, name, COALESCE(sql, '') FROM sqlite_master ORDER BY 1, 2",
                                  -1, &statement, nullptr), SQLITE_OK);
@@ -428,7 +433,7 @@ namespace
       const SqliteStorage storage{_path};
     }
     ASSERT_NO_FATAL_FAILURE(execute_sql("DROP INDEX ack_by_version;"));
-    const auto catalog = schema_catalog(_path);
+    const auto catalog{schema_catalog(_path)};
     EXPECT_THROW(static_cast<void>(SqliteStorage{_path}), std::runtime_error);
     EXPECT_EQ(schema_catalog(_path), catalog);
   }
@@ -436,7 +441,7 @@ namespace
   std::int64_t statement_steps(sqlite3* db, const char* sql, const std::int64_t node_id, const std::int64_t limit,
                                const bool bounded, const std::int64_t after_version, int* sorts, int* full_scans)
   {
-    sqlite3_stmt* statement = nullptr;
+    sqlite3_stmt* statement{nullptr};
     EXPECT_EQ(sqlite3_prepare_v2(db, sql, -1, &statement, nullptr), SQLITE_OK);
     sqlite3_bind_int64(statement, 1, node_id);
     if (bounded)
@@ -456,7 +461,7 @@ namespace
     }
     *sorts = sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_SORT, 0);
     *full_scans = sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_FULLSCAN_STEP, 0);
-    const auto steps = sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_VM_STEP, 0);
+    const auto steps{sqlite3_stmt_status(statement, SQLITE_STMTSTATUS_VM_STEP, 0)};
     sqlite3_finalize(statement);
     return steps;
   }
@@ -472,7 +477,7 @@ namespace
     ASSERT_EQ(storage.append(lowest, targets), AppendResult::kInserted);
     ASSERT_EQ(storage.append(middle, targets), AppendResult::kInserted);
 
-    const auto first = storage.pending_ids_after(7, std::nullopt, 2);
+    const auto first{storage.pending_ids_after(7, std::nullopt, 2)};
     ASSERT_EQ(first.size(), 2);
     EXPECT_EQ(first[0].uuid, lowest.uuid());
     EXPECT_EQ(first[0].last_update, -5);
@@ -480,7 +485,7 @@ namespace
     EXPECT_EQ(first[1].uuid, middle.uuid());
 
     const PendingCursor after_lowest{first[0].last_update, first[0].last_update_server_id, first[0].uuid};
-    const auto rest = storage.pending_ids_after(7, after_lowest, 10);
+    const auto rest{storage.pending_ids_after(7, after_lowest, 10)};
     ASSERT_EQ(rest.size(), 2);
     EXPECT_EQ(rest[0].uuid, middle.uuid());
     EXPECT_EQ(rest[1].uuid, highest.uuid());
@@ -496,9 +501,9 @@ namespace
   {
     SqliteStorage storage{_path};
     const SqliteStorage reader{_path};
-    const auto first = update(1, "one");
-    const auto second = update(2, "two");
-    const auto third = update(3, "three");
+    const auto first{update(1, "one")};
+    const auto second{update(2, "two")};
+    const auto third{update(3, "three")};
     const std::array<std::int32_t, 1> targets{7};
     ASSERT_EQ(storage.append(first, targets), AppendResult::kInserted);
     ASSERT_EQ(storage.append(second, targets), AppendResult::kInserted);
@@ -527,17 +532,17 @@ namespace
 
   TEST_F(SqliteStorageTest, PendingPageDoesNotSortTheWholeBacklog)
   {
-    constexpr int kRows = 4000;
+    constexpr int kRows{4000};
     {
       SqliteStorage storage{_path};
     }
-    const auto utf8 = _path.u8string();
-    sqlite3* raw = nullptr;
+    const auto utf8{_path.u8string()};
+    sqlite3* raw{nullptr};
     ASSERT_EQ(sqlite3_open(reinterpret_cast<const char*>(utf8.c_str()), &raw), SQLITE_OK);
     const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{raw, sqlite3_close};
     ASSERT_EQ(sqlite3_exec(db.get(), "BEGIN", nullptr, nullptr, nullptr), SQLITE_OK);
-    sqlite3_stmt* message = nullptr;
-    sqlite3_stmt* ack = nullptr;
+    sqlite3_stmt* message{nullptr};
+    sqlite3_stmt* ack{nullptr};
     ASSERT_EQ(sqlite3_prepare_v2(db.get(),
                                  "INSERT INTO message(uuid, application_name, key, last_update, last_update_server_id,"
                                  " operation_type, retained, value) VALUES (?1, ?3, ?4, ?2, 1, 'update', 1, ?5)",
@@ -546,12 +551,12 @@ namespace
                                  "INSERT INTO ack(message_uuid, node_id, last_update, last_update_server_id)"
                                  " VALUES (?1, 7, ?2, 1)",
                                  -1, &ack, nullptr), SQLITE_OK);
-    for (int row = 0; row < kRows; ++row)
+    for (int row{0}; row < kRows; ++row)
     {
       std::array < unsigned char, 16 > id{};
       id[14] = static_cast<unsigned char>((row >> 8) & 0xff);
       id[15] = static_cast<unsigned char>(row & 0xff);
-      const auto version = static_cast<sqlite3_int64>(row) - 20;
+      const auto version{static_cast<sqlite3_int64>(row) - 20};
       sqlite3_bind_blob(message, 1, id.data(), 16, SQLITE_TRANSIENT);
       sqlite3_bind_int64(message, 2, version);
       sqlite3_bind_blob(message, 3, "app", 3, SQLITE_TRANSIENT);
@@ -568,7 +573,7 @@ namespace
     sqlite3_finalize(ack);
     ASSERT_EQ(sqlite3_exec(db.get(), "COMMIT", nullptr, nullptr, nullptr), SQLITE_OK);
 
-    sqlite3_stmt* plan = nullptr;
+    sqlite3_stmt* plan{nullptr};
     ASSERT_EQ(sqlite3_prepare_v2(db.get(),
                                  "EXPLAIN QUERY PLAN "
                                  "SELECT message_uuid FROM ack WHERE node_id = ?1 AND acknowledged = 0 "
@@ -586,25 +591,29 @@ namespace
     EXPECT_NE(planned.find("ack_by_version"), std::string::npos) << planned;
     EXPECT_EQ(planned.find("TEMP B-TREE"), std::string::npos) << planned;
 
-    int sorts = 0;
-    int full_scans = 0;
-    const auto steps = statement_steps(db.get(),
-                                       "SELECT message_uuid, last_update, last_update_server_id FROM ack "
-                                       "WHERE node_id = ?1 AND acknowledged = 0 "
-                                       "ORDER BY last_update, last_update_server_id, message_uuid LIMIT ?2",
-                                       7, 256, false, 0, &sorts, &full_scans);
+    int sorts{0};
+    int full_scans{0};
+    const auto steps{
+      statement_steps(db.get(),
+                      "SELECT message_uuid, last_update, last_update_server_id FROM ack "
+                      "WHERE node_id = ?1 AND acknowledged = 0 "
+                      "ORDER BY last_update, last_update_server_id, message_uuid LIMIT ?2",
+                      7, 256, false, 0, &sorts, &full_scans)
+    };
     EXPECT_EQ(sorts, 0);
     EXPECT_EQ(full_scans, 0);
     EXPECT_LT(steps, kRows) << "page scan walked the whole backlog";
 
     SqliteStorage storage{_path};
-    const auto page = storage.pending_ids_after(7, std::nullopt, 256);
+    const auto page{storage.pending_ids_after(7, std::nullopt, 256)};
     ASSERT_EQ(page.size(), 256u);
     EXPECT_EQ(page.front().last_update, -20);
-    const auto next = storage.pending_ids_after(7, PendingCursor{
-                                                  page.back().last_update, page.back().last_update_server_id,
-                                                  page.back().uuid
-                                                }, 1);
+    const auto next{
+      storage.pending_ids_after(7, PendingCursor{
+                                  page.back().last_update, page.back().last_update_server_id,
+                                  page.back().uuid
+                                }, 1)
+    };
     ASSERT_EQ(next.size(), 1u);
     EXPECT_EQ(next.front().last_update, page.back().last_update + 1);
   }
