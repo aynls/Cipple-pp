@@ -8,8 +8,8 @@
 #include <stdexcept>
 #include <utility>
 
-#include "message/message.hpp"
-#include "tcp/message_decoder.hpp"
+#include "protocol/message.hpp"
+#include "protocol/message_decoder.hpp"
 
 namespace cipple::tcp
 {

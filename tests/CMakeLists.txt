@@ -9,14 +9,14 @@ FetchContent_MakeAvailable(googletest)
 
 add_executable(cipple_tests
         main.cpp
-        buffer_reader_test.cpp
-        buffer_writer_test.cpp
-        message_protocol_test.cpp
-        sqlite_storage_test.cpp
-        storage_writer_test.cpp
-        subscription_store_test.cpp
-        tcp_transport_test.cpp
-        single_server_test.cpp
+        common/buffer_reader_test.cpp
+        common/buffer_writer_test.cpp
+        common/message_protocol_test.cpp
+        common/tcp_transport_test.cpp
+        server/sqlite_storage_test.cpp
+        server/storage_writer_test.cpp
+        client/subscription_store_test.cpp
+        integration/single_server_test.cpp
 )
 
 target_link_libraries(cipple_tests PRIVATE

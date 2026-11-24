@@ -1,6 +1,6 @@
 add_library(cipple_client_lib STATIC
         src/client.cpp
-        src/subscription_store.cpp
+        src/subscription/subscription_store.cpp
 )
 
 target_include_directories(cipple_client_lib PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)

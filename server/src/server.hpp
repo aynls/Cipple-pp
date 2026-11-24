@@ -7,7 +7,7 @@
 #include <vector>
 
 #include "entity/entity_message.hpp"
-#include "replication.hpp"
+#include "replication/replication.hpp"
 
 namespace boost::asio
 {

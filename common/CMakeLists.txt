@@ -1,39 +1,34 @@
 add_library(cipple_common STATIC
-        common.cpp
         uuid.cpp
+        binary/buffer_reader.cpp
+        binary/buffer_writer.cpp
         entity/atomic_operation.cpp
         entity/entity_message.cpp
         entity/operation_type.cpp
         entity/resolve.cpp
-        hlc/hybrid_clock.cpp
-        message/delete_request.cpp
-        message/delete_response.cpp
-        message/dispatch_request.cpp
-        message/dispatch_response.cpp
-        message/get_request.cpp
-        message/get_response.cpp
-        message/heartbeat_request.cpp
-        message/heartbeat_response.cpp
-        message/incremental_update_request.cpp
-        message/incremental_update_response.cpp
-        message/message.cpp
-        message/message_type.cpp
-        message/put_request.cpp
-        message/put_response.cpp
-        message/subscribe_request.cpp
-        message/subscribe_response.cpp
-        message/sync_request.cpp
-        message/sync_response.cpp
-        message/unsubscribe_request.cpp
-        message/unsubscribe_response.cpp
-        storage/sqlite_storage.cpp
-        storage/storage.cpp
-        storage/storage_writer.cpp
-        tcp/buffer_reader.cpp
-        tcp/buffer_writer.cpp
+        protocol/configuration/delete_request.cpp
+        protocol/configuration/delete_response.cpp
+        protocol/configuration/get_request.cpp
+        protocol/configuration/get_response.cpp
+        protocol/configuration/incremental_update_request.cpp
+        protocol/configuration/incremental_update_response.cpp
+        protocol/configuration/put_request.cpp
+        protocol/configuration/put_response.cpp
+        protocol/frame_codec.cpp
+        protocol/heartbeat/heartbeat_request.cpp
+        protocol/heartbeat/heartbeat_response.cpp
+        protocol/message.cpp
+        protocol/message_decoder.cpp
+        protocol/message_type.cpp
+        protocol/replication/sync_request.cpp
+        protocol/replication/sync_response.cpp
+        protocol/subscription/dispatch_request.cpp
+        protocol/subscription/dispatch_response.cpp
+        protocol/subscription/subscribe_request.cpp
+        protocol/subscription/subscribe_response.cpp
+        protocol/subscription/unsubscribe_request.cpp
+        protocol/subscription/unsubscribe_response.cpp
         tcp/connector.cpp
-        tcp/frame_codec.cpp
-        tcp/message_decoder.cpp
         tcp/session.cpp
 )
 
@@ -43,7 +38,6 @@ target_include_directories(cipple_common PUBLIC
 
 target_link_libraries(cipple_common
         PUBLIC Boost::asio
-        PRIVATE SQLite3::SQLite3
 )
 
 if (MINGW)

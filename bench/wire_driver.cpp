@@ -15,14 +15,14 @@
 #include <vector>
 
 #include "entity/entity_message.hpp"
-#include "message/dispatch_request.hpp"
-#include "message/dispatch_response.hpp"
-#include "message/message.hpp"
-#include "message/message_type.hpp"
-#include "message/put_request.hpp"
-#include "message/put_response.hpp"
-#include "message/subscribe_request.hpp"
-#include "message/subscribe_response.hpp"
+#include "protocol/subscription/dispatch_request.hpp"
+#include "protocol/subscription/dispatch_response.hpp"
+#include "protocol/message.hpp"
+#include "protocol/message_type.hpp"
+#include "protocol/configuration/put_request.hpp"
+#include "protocol/configuration/put_response.hpp"
+#include "protocol/subscription/subscribe_request.hpp"
+#include "protocol/subscription/subscribe_response.hpp"
 #include "tcp/session.hpp"
 #include "uuid.hpp"
 

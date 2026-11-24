@@ -4,7 +4,7 @@
 #include <stdexcept>
 #include <utility>
 
-#include "message/message.hpp"
+#include "protocol/message.hpp"
 
 namespace cipple::tcp
 {

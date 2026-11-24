@@ -12,9 +12,9 @@
 #include <vector>
 
 #include "entity/entity_message.hpp"
-#include "message/dispatch_request.hpp"
-#include "message/message.hpp"
-#include "tcp/frame_codec.hpp"
+#include "protocol/subscription/dispatch_request.hpp"
+#include "protocol/message.hpp"
+#include "protocol/frame_codec.hpp"
 #include "tcp/session.hpp"
 #include "uuid.hpp"
 

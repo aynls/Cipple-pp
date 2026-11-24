@@ -7,4 +7,4 @@ add_executable(cipple_bench
 )
 
 target_include_directories(cipple_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(cipple_bench PRIVATE cipple_common)
+target_link_libraries(cipple_bench PRIVATE cipple_common cipple_server_lib)

@@ -23,8 +23,8 @@
 
 #include "client.hpp"
 #include "entity/atomic_operation.hpp"
-#include "message/dispatch_request.hpp"
-#include "subscription_store.hpp"
+#include "protocol/subscription/dispatch_request.hpp"
+#include "subscription/subscription_store.hpp"
 
 namespace
 {

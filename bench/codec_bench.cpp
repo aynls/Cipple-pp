@@ -4,8 +4,8 @@
 #include <cstdio>
 
 #include "entity/entity_message.hpp"
-#include "message/dispatch_request.hpp"
-#include "tcp/frame_codec.hpp"
+#include "protocol/subscription/dispatch_request.hpp"
+#include "protocol/frame_codec.hpp"
 #include "uuid.hpp"
 
 namespace

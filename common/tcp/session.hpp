@@ -11,7 +11,7 @@
 #include <optional>
 #include <vector>
 
-#include "tcp/frame_codec.hpp"
+#include "protocol/frame_codec.hpp"
 
 namespace cipple::tcp
 {

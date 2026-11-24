@@ -5,22 +5,22 @@ Cipple++ 按 `(application, key)` 管理配置。每个服务端都能接受写�
 
 ## 组件
 
-- `server/` 处理配置请求，在本地提交版本后向其他副本同步，并向订阅客户端推送变更。`Subscriptions`
-  管理会话订阅、回放和分发回执。[请求处理](../server/src/server.cpp) · [副本同步](../server/src/replication.cpp) · [订阅路由](../server/src/subscriptions.cpp)
-- `client/` 提供命令行入口，支持多端点连接和切换。持久订阅将事件与回放进度保存在客户端的 SQLite
-  文件中。[命令行入口](../client/main.cpp) · [订阅存储](../client/src/subscription_store.cpp)
-- `common/` 提供共用的消息、基于 Boost.Asio 的 TCP 会话、版本模型和服务端 SQLite
-  存储。[TCP 会话](../common/tcp/session.cpp)
+- `common/` 提供两端共享的配置版本模型 `entity/`、基础字节读写 `binary/`、消息与帧编解码 `protocol/`，以及 TCP 会话和重连 `tcp/`。
+  协议消息按配置操作、订阅投递、副本同步和心跳分组。[协议实现](../common/protocol) · [TCP 会话](../common/tcp/session.cpp)
+- `server/src/` 处理配置请求并协调节点状态。`clock/` 为写入分配版本时间，`storage/` 管理 SQLite 事务与写队列，`replication/` 调度副本复制，
+  `subscription/` 管理订阅路由、回放与确认。[请求处理](../server/src/server.cpp) · [副本同步](../server/src/replication/replication.cpp)
+- `client/src/` 实现配置请求、多端点连接与切换。`subscription/` 将持久订阅的事件和游标保存在客户端自己的 SQLite 文件中。
+  [命令行入口](../client/main.cpp) · [订阅存储](../client/src/subscription/subscription_store.cpp)
 
 ## 执行模型
 
 每个服务端运行一个 I/O 线程和一个 SQLite 写线程。I/O 线程管理 TCP 会话、订阅游标、复制窗口和计时器，通过独立的 SQLite
 连接读取数据。`StorageWriter` 在写线程按入队顺序执行写任务，并把完成回调投递回 I/O
-线程。关闭服务端时，先停止接收连接与复制调度，再等待已接收的写任务结束。[服务入口](../server/main.cpp) · [写线程](../common/storage/storage_writer.cpp)
+线程。关闭服务端时，先停止接收连接与复制调度，再等待已接收的写任务结束。[服务入口](../server/main.cpp) · [写线程](../server/src/storage/storage_writer.cpp)
 
 写入容量包括正在排队、执行和等待 I/O 线程处理结果的任务。默认允许 1,024 个配置写入或入站同步任务、合计 64 MiB
 的申报负载，并为出站复制确认预留 256 个任务名额。请求在入队前达到容量限制时收到拒绝响应。三个上限由 `StorageWriter::Limits`
-定义。[写入容量](../common/storage/storage_writer.hpp)
+定义。[写入容量](../server/src/storage/storage_writer.hpp)
 
 ## 写入与复制
 
@@ -28,14 +28,14 @@ Cipple++ 按 `(application, key)` 管理配置。每个服务端都能接受写�
 UUID 和内容向原节点重试。
 
 写线程维护混合逻辑时钟（HLC）。本地写入在确认请求 UUID 首次出现后取版本号，远端写入在提交后才推进本地时钟。SQLite
-在追加事务内判定所写版本是否成为该键的当前值。只有成功提交且成为当前值的版本进入实时推送。[写入路径](../server/src/server.cpp) · [提交结果](../common/storage/sqlite_storage.cpp)
+在追加事务内判定所写版本是否成为该键的当前值。只有成功提交且成为当前值的版本进入实时推送。[写入路径](../server/src/server.cpp) · [提交结果](../server/src/storage/sqlite_storage.cpp)
 
 目标副本提交版本后返回确认，已存有相同版本时也可确认。发送端收到同一会话中与本次请求匹配的回执后保存确认进度，断线或重启后继续发送待确认记录。默认的
 `mesh` 模式允许持有版本的接收节点继续向其他成员传播，`star` 模式由写入节点直接向各目标发送。
 
 每个目标副本维护自己的待发游标。SQLite 使用待确认行上的覆盖索引，按 `(HLC, node ID, UUID)` 每页读取最多 256 个版本
 ID。游标越过已装载、退避和超帧的记录，实际发送时才加载实体和增量基底。每轮最多读取四页。队列限制待发、在途和待持久确认的记录数，超出内存重试容量的记录仍留在
-SQLite 待发索引中。[补发调度](../server/src/replication.cpp) · [待发索引](../common/storage/sqlite_storage.cpp)
+SQLite 待发索引中。[补发调度](../server/src/replication/replication.cpp) · [待发索引](../server/src/storage/sqlite_storage.cpp)
 
 成功或重复回执立即释放网络发送窗口。该版本保留在待确认队列中，写线程每次最多提交 32 个确认，低流量时由 250
 毫秒轮询触发提交。写入失败时在本地重试确认事务。提交成功后才释放装载名额，防止待发扫描在提交前再次发送该版本。
@@ -43,15 +43,15 @@ SQLite 待发索引中。[补发调度](../server/src/replication.cpp) · [待�
 ## 当前值与订阅恢复
 
 读取时按 HLC、源节点 ID 和版本 UUID
-依次比较，取排序最高的版本。持久回放取该键在本地日志中严格晚于游标的第一条记录，因此晚到的旧版本也能送达。[时钟](../common/hlc/hybrid_clock.cpp) · [读取与回放](../common/storage/sqlite_storage.cpp)
+依次比较，取排序最高的版本。持久回放取该键在本地日志中严格晚于游标的第一条记录，因此晚到的旧版本也能送达。[时钟](../server/src/clock/hybrid_clock.cpp) · [读取与回放](../server/src/storage/sqlite_storage.cpp)
 
-服务端按配置键索引订阅会话。同一轮中，游标相同的同键订阅共享一次日志查询和编码帧。每个会话对每个键保留一条待确认投递，收到匹配回执后推进游标。读取或发送失败时关闭受影响的会话，客户端重连后从已保存的游标继续。[订阅状态](../server/src/subscriptions.cpp)
+服务端按配置键索引订阅会话。同一轮中，游标相同的同键订阅共享一次日志查询和编码帧。每个会话对每个键保留一条待确认投递，收到匹配回执后推进游标。读取或发送失败时关闭受影响的会话，客户端重连后从已保存的游标继续。[订阅状态](../server/src/subscription/subscriptions.cpp)
 
 持久订阅客户端在同一事务中保存事件和该端点、该键的回放游标，再向服务端确认。重新连接时从该端点的游标续传，首次连接其他端点时从该副本保留历史的开头回放。客户端按版本
 UUID 去重，收到重复事件时仍推进所连端点的游标。
 
 客户端复用查询、写入事件和更新游标的预编译语句。每次使用结束时释放查询游标和参数绑定，让 SQLite 可以在投递之间回收 WAL
-空间。[客户端存储](../client/src/subscription_store.cpp)
+空间。[客户端存储](../client/src/subscription/subscription_store.cpp)
 
 ## 部署边界
 

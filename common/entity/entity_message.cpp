@@ -3,8 +3,8 @@
 #include <stdexcept>
 #include <utility>
 
-#include "tcp/buffer_reader.hpp"
-#include "tcp/buffer_writer.hpp"
+#include "binary/buffer_reader.hpp"
+#include "binary/buffer_writer.hpp"
 
 namespace cipple::entity
 {
