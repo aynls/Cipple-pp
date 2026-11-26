@@ -30,6 +30,8 @@ namespace cipple::message
     void encode_fields(tcp::BufferWriter& writer) const override;
 
   private:
+    friend class RelayDispatch;
+
     entity::EntityMessage _entity;
     std::int64_t _sequence;
     std::optional<entity::EntityMessage> _base;

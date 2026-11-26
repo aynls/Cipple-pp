@@ -11,6 +11,7 @@
 #include "protocol/configuration/delete_response.hpp"
 #include "protocol/subscription/dispatch_request.hpp"
 #include "protocol/subscription/dispatch_response.hpp"
+#include "protocol/subscription/relay_messages.hpp"
 #include "protocol/configuration/get_request.hpp"
 #include "protocol/configuration/get_response.hpp"
 #include "protocol/heartbeat/heartbeat_request.hpp"
@@ -60,9 +61,14 @@ namespace cipple::tcp
       &decode_as<message::RetryResponse>,
       &decode_as<message::HistoryLostResponse>,
       &decode_as<message::WrongShardResponse>,
+      &decode_as<message::RelayAdvertise>,
+      &decode_as<message::RelayRoute>,
+      &decode_as<message::RelayStatus>,
+      &decode_as<message::RelayHello>,
+      &decode_as<message::RelayDispatch>,
     };
 
-    static_assert(kDecoders.size() == static_cast<std::uint8_t>(message::MessageType::kWrongShardResponse) + 1);
+    static_assert(kDecoders.size() == static_cast<std::uint8_t>(message::MessageType::kRelayDispatch) + 1);
   }
 
   std::unique_ptr<message::Message> decode_message(const std::span<const std::uint8_t> body)

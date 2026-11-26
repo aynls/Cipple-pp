@@ -27,6 +27,7 @@ add_library(cipple_common STATIC
         protocol/replication/sync_response.cpp
         protocol/subscription/dispatch_request.cpp
         protocol/subscription/dispatch_response.cpp
+        protocol/subscription/relay_messages.cpp
         protocol/subscription/subscribe_request.cpp
         protocol/subscription/subscribe_response.cpp
         protocol/subscription/unsubscribe_request.cpp

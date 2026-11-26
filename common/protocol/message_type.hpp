@@ -27,6 +27,11 @@ namespace cipple::message
     kRetryResponse = 18,
     kHistoryLostResponse = 19,
     kWrongShardResponse = 20,
+    kRelayAdvertise = 21,
+    kRelayRoute = 22,
+    kRelayStatus = 23,
+    kRelayHello = 24,
+    kRelayDispatch = 25,
   };
 
   std::uint8_t to_byte(MessageType type) noexcept;
