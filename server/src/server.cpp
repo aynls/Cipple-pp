@@ -32,6 +32,7 @@
 #include "protocol/heartbeat/heartbeat_response.hpp"
 #include "protocol/replication/sync_response.hpp"
 #include "protocol/subscription/dispatch_response.hpp"
+#include "protocol/subscription/relay_messages.hpp"
 #include "protocol/subscription/subscribe_request.hpp"
 #include "protocol/subscription/subscribe_response.hpp"
 #include "protocol/subscription/unsubscribe_request.hpp"
@@ -173,10 +174,19 @@ namespace cipple::server
     HANDLE _handle;
   };
 
+  void RelayRecoveryOptions::validate() const
+  {
+    if (!bytes_per_second || burst_bytes < tcp::kDefaultMaxFrameLength + tcp::kFrameLengthPrefixSize)
+    {
+      throw std::invalid_argument{"relay recovery needs a positive rate and a burst that holds a complete maximum frame"};
+    }
+  }
+
   std::shared_ptr<Server> Server::start(asio::io_context& context, const asio::ip::tcp::endpoint& endpoint,
                                         const std::filesystem::path& database, raft::RaftOptions options,
-                                        std::optional<ShardOwnership> shard)
+                                        std::optional<ShardOwnership> shard, const RelayRecoveryOptions recovery)
   {
+    recovery.validate();
     if (shard)
     {
       configure_shard(*shard, options);
@@ -221,7 +231,7 @@ namespace cipple::server
     {
       throw std::runtime_error{"Raft database missing beside a previously applied state machine"};
     }
-    server->_subscriptions = std::make_unique<Subscriptions>(server->_machine->reader());
+    server->_subscriptions = std::make_unique<Subscriptions>(server->_machine->reader(), recovery);
     server->_raft = std::make_unique<raft::RaftNode>(options, server->_machine);
     server->accept_next();
     server->check_delivery_deadlines();
@@ -232,6 +242,7 @@ namespace cipple::server
     : _context{context}
       , _acceptor{context, endpoint, false}
       , _delivery_timer{context}
+      , _recovery_timer{context}
       , _local_endpoint{_acceptor.local_endpoint()}
   {
   }
@@ -253,6 +264,7 @@ namespace cipple::server
     try
     {
       _delivery_timer.cancel();
+      _recovery_timer.cancel();
     }
     catch (const boost::system::system_error&)
     {
@@ -290,6 +302,9 @@ namespace cipple::server
   {
     const auto id{++_next_connection_id};
     const auto weak{weak_from_this()};
+    boost::system::error_code error;
+    const auto endpoint{socket.remote_endpoint(error)};
+    auto address{error ? std::string{} : endpoint.address().to_string()};
     auto session{
       tcp::Session::start(std::move(socket),
                           [weak, id](tcp::Session& connection, std::unique_ptr<message::Message> message)
@@ -304,10 +319,14 @@ namespace cipple::server
                             if (const auto self{weak.lock()})
                             {
                               self->_subscriptions->detach(id);
+                              if (self->_acceptor.is_open())
+                              {
+                                self->schedule_replay();
+                              }
                             }
                           })
     };
-    _subscriptions->attach(id, std::move(session));
+    _subscriptions->attach(id, std::move(session), std::move(address));
   }
 
   std::optional<std::uint32_t> Server::wrong_shard(const message::Message& message) const noexcept
@@ -391,6 +410,7 @@ namespace cipple::server
           self->_replay_scheduled = false;
           self->_subscriptions->replay_ready();
           self->schedule_replay();
+          self->schedule_recovery();
         }
       });
       _replay_scheduled = true;
@@ -398,6 +418,30 @@ namespace cipple::server
     catch (const std::exception& error)
     {
       std::cerr << "Scheduling subscription replay failed: " << error.what() << '\n';
+    }
+  }
+
+  void Server::schedule_recovery() noexcept
+  {
+    const auto due{_subscriptions->recovery_due()};
+    if (!due || *due <= std::chrono::steady_clock::now() || _recovery_timer.expiry() == *due)
+    {
+      return;
+    }
+    try
+    {
+      _recovery_timer.expires_at(*due);
+      _recovery_timer.async_wait([weak{weak_from_this()}](const boost::system::error_code error)
+      {
+        if (const auto self{weak.lock()}; self && !error && self->_acceptor.is_open())
+        {
+          self->schedule_replay();
+        }
+      });
+    }
+    catch (const boost::system::system_error& error)
+    {
+      std::cerr << "Scheduling relay recovery failed: " << error.what() << '\n';
     }
   }
 
@@ -441,9 +485,11 @@ namespace cipple::server
             send(session, message::HistoryLostResponse{request.uuid(), floor});
             break;
           }
-          _subscriptions->subscribe(connection_id, {request.application_name(), request.key()}, request.resume_after());
+          const ConfigKey key{request.application_name(), request.key()};
+          _subscriptions->subscribe(connection_id, key, request.resume_after());
           if (send(session, message::SubscribeResponse{request.uuid(), true}))
           {
+            _subscriptions->enable_relay(connection_id, key);
             schedule_replay();
           }
           break;
@@ -453,12 +499,26 @@ namespace cipple::server
           const auto& request{static_cast<const message::UnsubscribeRequest&>(message)};
           _subscriptions->unsubscribe(connection_id, {request.application_name(), request.key()});
           send(session, message::UnsubscribeResponse{request.uuid(), true});
+          schedule_replay();
           break;
         }
       case MessageType::kDispatchResponse:
         {
           const auto& reply{static_cast<const message::DispatchResponse&>(message)};
           _subscriptions->acknowledge(connection_id, reply.uuid(), reply.success());
+          schedule_replay();
+          break;
+        }
+      case MessageType::kRelayAdvertise:
+        {
+          const auto& advertisement{static_cast<const message::RelayAdvertise&>(message)};
+          _subscriptions->advertise(connection_id, advertisement.port(), advertisement.slots());
+          break;
+        }
+      case MessageType::kRelayStatus:
+        {
+          const auto& status{static_cast<const message::RelayStatus&>(message)};
+          _subscriptions->relay_status(connection_id, status.uuid(), status.ready());
           schedule_replay();
           break;
         }

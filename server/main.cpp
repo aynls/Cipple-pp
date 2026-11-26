@@ -115,7 +115,8 @@ int main(const int argc, char** argv)
               << "       [--raft-port <port>] [--raft-host <ipv4>] [--peers <id@ipv4:raft-port,...>]\n"
               << "       [--snapshot-distance <entries>]\n"
               << "   or: cipple_server <port> <database> --shards <file> --shard-id <uint32> --id <id>\n"
-              << "       [--bind <ip>] [--snapshot-distance <entries>]\n";
+              << "       [--bind <ip>] [--snapshot-distance <entries>]\n"
+              << "Either form accepts [--relay-bytes-per-second <bytes>] [--relay-burst-bytes <bytes>]\n";
     return 2;
   }
 
@@ -130,6 +131,7 @@ int main(const int argc, char** argv)
     std::optional<std::uint16_t> raft_port;
     bool id_present{false};
     cipple::raft::RaftOptions options;
+    cipple::server::RelayRecoveryOptions recovery;
     options.node_id = 1;
     for (int i{3}; i < argc; i += 2)
     {
@@ -168,6 +170,14 @@ int main(const int argc, char** argv)
       else if (flag == "--snapshot-distance")
       {
         options.snapshot_distance = parse_integer<std::int32_t>(value, "snapshot distance");
+      }
+      else if (flag == "--relay-bytes-per-second")
+      {
+        recovery.bytes_per_second = parse_integer<std::uint64_t>(value, "relay recovery rate");
+      }
+      else if (flag == "--relay-burst-bytes")
+      {
+        recovery.burst_bytes = parse_integer<std::uint64_t>(value, "relay recovery burst");
       }
       else
       {
@@ -255,7 +265,7 @@ int main(const int argc, char** argv)
 
     asio::io_context context;
     const auto server{
-      cipple::server::Server::start(context, {bind, port}, argv[2], std::move(options), std::move(ownership))
+      cipple::server::Server::start(context, {bind, port}, argv[2], std::move(options), std::move(ownership), recovery)
     };
     asio::signal_set signals{context, SIGINT, SIGTERM};
     signals.async_wait([&](const boost::system::error_code error, int)
