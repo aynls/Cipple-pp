@@ -25,6 +25,7 @@
 #include "client.hpp"
 #include "entity/atomic_operation.hpp"
 #include "protocol/subscription/dispatch_request.hpp"
+#include "protocol/subscription/relay_messages.hpp"
 #include "sharding/shard_layout.hpp"
 #include "subscription/subscription_store.hpp"
 
@@ -66,6 +67,8 @@ namespace
     std::optional<Uuid> base;
     std::optional<AtomicOperation> operation;
     std::optional<std::string> state;
+    std::optional<std::uint16_t> relay_port;
+    std::optional<std::uint16_t> relay_slots;
     std::optional<Uuid> request_id;
     std::optional<std::int64_t> resume_after;
     std::optional<std::uint64_t> unsubscribe_after;
@@ -203,6 +206,18 @@ namespace
       {
         options.state.emplace(value);
       }
+      else if (flag == "--relay-port")
+      {
+        options.relay_port = parse_integer<std::uint16_t>(value, "Invalid relay port");
+      }
+      else if (flag == "--relay-slots")
+      {
+        options.relay_slots = parse_integer<std::uint16_t>(value, "Invalid relay slot count");
+        if (!*options.relay_slots || *options.relay_slots > cipple::message::kMaxRelaySlots)
+        {
+          throw std::invalid_argument{"Relay slots must be between 1 and 64"};
+        }
+      }
       else if (flag == "--request-id")
       {
         options.request_id = Uuid::parse(value);
@@ -321,6 +336,10 @@ namespace
     if (options.request_id && !writes_configuration(options.command))
     {
       throw std::invalid_argument{"--request-id requires a write command"};
+    }
+    if ((options.relay_port && !options.state) || (options.relay_slots && !options.relay_port))
+    {
+      throw std::invalid_argument{"--relay-port requires --state and --relay-slots requires --relay-port"};
     }
     if (options.shard_layout)
     {
@@ -683,7 +702,9 @@ namespace
                                  },
                                }, {
                                  .request_timeout = options.timeout, .connect_timeout = connect_timeout,
-                                 .heartbeat_interval = heartbeat_interval
+                                 .heartbeat_interval = heartbeat_interval,
+                                 .relay_member = state.has_value(), .relay_port = options.relay_port,
+                                 .relay_slots = options.relay_slots.value_or(16)
                                });
     context.run();
     return result;
@@ -708,6 +729,7 @@ int main(const int argc, char** argv)
       "Options: --shards FILE (route by APP and KEY; omit ENDPOINT), --selector ordered|hash (alias --route)\n"
       "         --timeout-ms MS, --verbose, --request-id UUID (write command)\n"
       "         --heartbeat-ms MS (subscribe, defaults to 1000 with --state)\n"
+      "         --relay-port PORT (captain, 0 selects a port), --relay-slots N (default 16, max 64)\n"
       "Shard mode uses only the selected shard's application endpoints; wrong-shard replies are fatal.\n"
       "Ctrl+C unsubscribes on the active subscription connection.\n";
     return 2;

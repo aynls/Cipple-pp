@@ -42,6 +42,8 @@ namespace cipple::tcp
 
 namespace cipple::client
 {
+  class RelayPeers;
+
   enum class ClientError
   {
     kWrongShard = 1,
@@ -66,6 +68,9 @@ namespace cipple::client
     std::chrono::steady_clock::duration connect_timeout{std::chrono::seconds{5}};
     // When set, send a heartbeat after this interval and allow one interval for its reply.
     std::optional<std::chrono::steady_clock::duration> heartbeat_interval{std::nullopt};
+    bool relay_member{false};
+    std::optional<std::uint16_t> relay_port;
+    std::uint16_t relay_slots{16};
   };
 
   // Use on one I/O thread. Handlers must return normally.
@@ -133,6 +138,8 @@ namespace cipple::client
     void schedule_heartbeat();
     void send_heartbeat();
     void on_message(tcp::Session& session, const message::Message& message);
+    void start_relay(const std::shared_ptr<tcp::Session>& session);
+    void deliver(tcp::Session& session, const message::DispatchRequest& dispatch);
     void on_request_timeout(const Uuid& uuid, std::uint64_t generation);
     void fail_session_pending(boost::system::error_code reason);
     void fail_pending(boost::system::error_code reason);
@@ -141,11 +148,15 @@ namespace cipple::client
     ClientHandlers _handlers;
     std::chrono::steady_clock::duration _request_timeout;
     std::optional<std::chrono::steady_clock::duration> _heartbeat_interval;
+    bool _relay_member;
+    std::optional<std::uint16_t> _relay_port;
+    std::uint16_t _relay_slots;
     std::optional<boost::asio::steady_timer> _heartbeat_timer;
     std::uint64_t _request_generation{0};
     std::unordered_map<Uuid, PendingResponse> _pending;
     std::shared_ptr<tcp::Session> _session;
     std::shared_ptr<tcp::Connector> _connector;
+    std::shared_ptr<RelayPeers> _relay;
   };
 }
 

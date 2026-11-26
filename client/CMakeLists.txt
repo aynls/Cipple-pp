@@ -1,5 +1,6 @@
 add_library(cipple_client_lib STATIC
         src/client.cpp
+        src/subscription/relay_peers.cpp
         src/subscription/subscription_store.cpp
 )
 

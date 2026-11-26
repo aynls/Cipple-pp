@@ -12,6 +12,8 @@
 #include "protocol/configuration/delete_response.hpp"
 #include "protocol/subscription/dispatch_request.hpp"
 #include "protocol/subscription/dispatch_response.hpp"
+#include "protocol/subscription/relay_messages.hpp"
+#include "subscription/relay_peers.hpp"
 #include "protocol/configuration/get_request.hpp"
 #include "protocol/configuration/get_response.hpp"
 #include "protocol/heartbeat/heartbeat_request.hpp"
@@ -97,6 +99,14 @@ namespace cipple::client
     {
       throw std::invalid_argument{"client: heartbeat interval must be positive"};
     }
+    if (options.relay_port && (!options.relay_slots || options.relay_slots > message::kMaxRelaySlots))
+    {
+      throw std::invalid_argument{"client: relay slots must be between 1 and 64"};
+    }
+    if ((options.relay_member || options.relay_port) && !handlers.on_delivery)
+    {
+      throw std::invalid_argument{"client: relayed subscriptions require an on_delivery handler"};
+    }
     auto client{std::shared_ptr<Client>{new Client{context, std::move(handlers), options}}};
     const auto weak{client->weak_from_this()};
     client->_connector = tcp::Connector::start_any(context, std::move(endpoints), {
@@ -104,7 +114,12 @@ namespace cipple::client
                                                      {
                                                        if (const auto self{weak.lock()})
                                                        {
-                                                         self->_session = std::move(session);
+                                                         self->_session = session;
+                                                         self->start_relay(session);
+                                                         if (self->_session != session)
+                                                         {
+                                                           return;
+                                                         }
                                                          self->transmit_pending();
                                                          self->schedule_heartbeat();
                                                          if (self->_handlers.on_connected)
@@ -126,6 +141,10 @@ namespace cipple::client
                                                        if (const auto self{weak.lock()})
                                                        {
                                                          self->_heartbeat_timer.reset();
+                                                         if (auto relay{std::exchange(self->_relay, {})})
+                                                         {
+                                                           relay->stop();
+                                                         }
                                                          self->_session.reset();
                                                          self->fail_session_pending(reason);
                                                          if (self->_connector && self->_handlers.on_disconnected)
@@ -143,6 +162,9 @@ namespace cipple::client
       , _handlers{std::move(handlers)}
       , _request_timeout{options.request_timeout}
       , _heartbeat_interval{options.heartbeat_interval}
+      , _relay_member{options.relay_member}
+      , _relay_port{options.relay_port}
+      , _relay_slots{options.relay_slots}
   {
   }
 
@@ -168,6 +190,10 @@ namespace cipple::client
     if (auto connector{std::move(_connector)})
     {
       _heartbeat_timer.reset();
+      if (auto relay{std::exchange(_relay, {})})
+      {
+        relay->stop();
+      }
       _session.reset();
       connector->stop();
       fail_pending(asio::error::operation_aborted);
@@ -269,32 +295,55 @@ namespace cipple::client
   void Client::subscribe(std::string application_name, std::string key, StatusHandler on_done,
                          const std::optional<std::int64_t> resume_after, HistoryLostHandler on_history_lost)
   {
+    const RelayPeers::Topic topic{application_name, key};
     send(message::SubscribeRequest{Uuid::generate(), std::move(application_name), std::move(key), resume_after},
          MessageType::kSubscribeResponse,
-         [on_done{std::move(on_done)}, on_history_lost{std::move(on_history_lost)}](
+         [on_done{std::move(on_done)}, on_history_lost{std::move(on_history_lost)}, topic,
+          relay{std::weak_ptr<RelayPeers>{_relay}}, durable{resume_after.has_value()}](
            const error_code error, const message::Message* response)
          {
-           if (!on_done)
-           {
-             return;
-           }
            if (!error && response->type() == MessageType::kHistoryLostResponse)
            {
              if (on_history_lost)
              {
                on_history_lost(static_cast<const message::HistoryLostResponse&>(*response).minimum_cursor());
              }
-             on_done({}, false);
+             if (on_done)
+             {
+               on_done({}, false);
+             }
              return;
            }
-           on_done(error, !error && static_cast<const message::SubscribeResponse&>(*response).success());
+           const bool success{!error && static_cast<const message::SubscribeResponse&>(*response).success()};
+           if (const auto peers{relay.lock()}; peers && success)
+           {
+             peers->track(topic, durable);
+           }
+           if (on_done)
+           {
+             on_done(error, success);
+           }
          });
   }
 
   void Client::unsubscribe(std::string application_name, std::string key, StatusHandler on_done)
   {
+    const RelayPeers::Topic topic{application_name, key};
     send(message::UnsubscribeRequest{Uuid::generate(), std::move(application_name), std::move(key)},
-         MessageType::kUnsubscribeResponse, status_handler<message::UnsubscribeResponse>(std::move(on_done)));
+         MessageType::kUnsubscribeResponse,
+         [topic, relay{std::weak_ptr<RelayPeers>{_relay}}, on_done{std::move(on_done)}](
+           const error_code error, const message::Message* response)
+         {
+           const bool success{!error && static_cast<const message::UnsubscribeResponse&>(*response).success()};
+           if (const auto peers{relay.lock()}; peers && success)
+           {
+             peers->track(topic, false);
+           }
+           if (on_done)
+           {
+             on_done(error, success);
+           }
+         });
   }
 
   void Client::send(const message::Message& request, const MessageType response_type, ResponseHandler on_done,
@@ -431,6 +480,49 @@ namespace cipple::client
          }, _heartbeat_interval);
   }
 
+  void Client::start_relay(const std::shared_ptr<tcp::Session>& session)
+  {
+    if (!_relay_member && !_relay_port)
+    {
+      return;
+    }
+    const auto weak{weak_from_this()};
+    auto relay{std::make_shared<RelayPeers>(_context, session,
+      [weak, control{std::weak_ptr<tcp::Session>{session}}](const message::DispatchRequest& dispatch)
+      {
+        const auto self{weak.lock()};
+        const auto current{control.lock()};
+        if (self && current && self->_session == current)
+        {
+          self->deliver(*current, dispatch);
+        }
+      })};
+    _relay = relay;
+    relay->start(_connector->endpoint().address().is_v6(), _relay_port, _relay_slots);
+  }
+
+  void Client::deliver(tcp::Session& session, const message::DispatchRequest& dispatch)
+  {
+    bool handled{false};
+    if (_handlers.on_delivery)
+    {
+      if (const auto endpoint{remote_endpoint()})
+      {
+        handled = _handlers.on_delivery(*endpoint, dispatch);
+      }
+    }
+    else if (_handlers.on_update)
+    {
+      _handlers.on_update(dispatch.entity());
+      handled = true;
+    }
+    if (_session.get() == &session && session.is_open()
+      && session.async_send(message::DispatchResponse{dispatch.uuid(), handled}))
+    {
+      session.close();
+    }
+  }
+
   void Client::on_message(tcp::Session& session, const message::Message& message)
   {
     if (_session.get() != &session)
@@ -439,25 +531,28 @@ namespace cipple::client
     }
     if (message.type() == MessageType::kDispatchRequest)
     {
-      const auto& dispatch{static_cast<const message::DispatchRequest&>(message)};
-      bool handled{false};
-      if (_handlers.on_delivery)
-      {
-        if (const auto endpoint{remote_endpoint()})
-        {
-          handled = _handlers.on_delivery(*endpoint, dispatch);
-        }
-      }
-      else if (_handlers.on_update)
-      {
-        _handlers.on_update(dispatch.entity());
-        handled = true;
-      }
-      if (session.is_open() && session.async_send(message::DispatchResponse{message.uuid(), handled}))
-      {
-        session.close();
-      }
+      deliver(session, static_cast<const message::DispatchRequest&>(message));
       return;
+    }
+    if (auto relay{_relay})
+    {
+      switch (message.type())
+      {
+      case MessageType::kRelayRoute:
+        relay->route(static_cast<const message::RelayRoute&>(message));
+        return;
+      case MessageType::kRelayStatus:
+        if (!static_cast<const message::RelayStatus&>(message).ready())
+        {
+          relay->revoke(message.uuid());
+        }
+        return;
+      case MessageType::kRelayDispatch:
+        relay->forward(static_cast<const message::RelayDispatch&>(message));
+        return;
+      default:
+        break;
+      }
     }
 
     const auto pending{_pending.find(message.uuid())};
