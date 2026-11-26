@@ -42,6 +42,24 @@ namespace cipple::client
         || type == MessageType::kDeleteResponse || type == MessageType::kIncrementalUpdateResponse;
     }
 
+    class ClientErrorCategory final : public boost::system::error_category
+    {
+    public:
+      const char* name() const noexcept override
+      {
+        return "cipple-client";
+      }
+
+      std::string message(const int value) const override
+      {
+        if (value == static_cast<int>(ClientError::kWrongShard))
+        {
+          return "request routed to the wrong shard";
+        }
+        return "unknown client error";
+      }
+    };
+
     template <typename Response>
     auto status_handler(Client::StatusHandler on_done)
     {
@@ -53,6 +71,12 @@ namespace cipple::client
         }
       };
     }
+  }
+
+  boost::system::error_code make_error_code(const ClientError error) noexcept
+  {
+    static const ClientErrorCategory category;
+    return {static_cast<int>(error), category};
   }
 
   std::shared_ptr<Client> Client::start(asio::io_context& context, const asio::ip::tcp::endpoint& endpoint,
@@ -439,6 +463,12 @@ namespace cipple::client
     const auto pending{_pending.find(message.uuid())};
     if (pending == _pending.end())
     {
+      return;
+    }
+    if (message.type() == MessageType::kWrongShardResponse)
+    {
+      auto failed{_pending.extract(pending)};
+      failed.mapped().on_done(make_error_code(ClientError::kWrongShard), nullptr);
       return;
     }
     if (message.type() == MessageType::kRetryResponse)

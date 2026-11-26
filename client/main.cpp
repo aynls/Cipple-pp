@@ -11,6 +11,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <iostream>
 #include <memory>
 #include <optional>
@@ -24,6 +25,7 @@
 #include "client.hpp"
 #include "entity/atomic_operation.hpp"
 #include "protocol/subscription/dispatch_request.hpp"
+#include "sharding/shard_layout.hpp"
 #include "subscription/subscription_store.hpp"
 
 namespace
@@ -68,6 +70,7 @@ namespace
     std::optional<std::int64_t> resume_after;
     std::optional<std::uint64_t> unsubscribe_after;
     std::optional<std::chrono::milliseconds> heartbeat_interval;
+    std::optional<std::filesystem::path> shard_layout;
     std::chrono::milliseconds timeout{std::chrono::seconds{10}};
     bool verbose{false};
   };
@@ -149,6 +152,17 @@ namespace
     }
   }
 
+  std::vector<tcp::endpoint> application_endpoints(const cipple::sharding::Shard& shard)
+  {
+    std::vector<tcp::endpoint> endpoints;
+    endpoints.reserve(shard.members.size());
+    for (const auto& member : shard.members)
+    {
+      endpoints.push_back(member.application);
+    }
+    return endpoints;
+  }
+
   std::uint64_t key_hash(const std::string_view application, const std::string_view key) noexcept
   {
     constexpr std::uint64_t prime{1099511628211ULL};
@@ -181,7 +195,11 @@ namespace
         throw std::invalid_argument{"Missing value for " + std::string{flag}};
       }
       const std::string_view value{argv[index++]};
-      if (flag == "--state")
+      if (flag == "--shards")
+      {
+        options.shard_layout = std::filesystem::path{std::string{value}};
+      }
+      else if (flag == "--state")
       {
         options.state.emplace(value);
       }
@@ -237,11 +255,21 @@ namespace
         throw std::invalid_argument{"Unknown option " + std::string{flag}};
       }
     }
-    if (argc - index < 4)
+    if (options.shard_layout)
     {
-      throw std::invalid_argument{"Expected endpoints, command, application and key"};
+      if (argc - index < 3)
+      {
+        throw std::invalid_argument{"Expected command, application and key after --shards"};
+      }
     }
-    options.endpoints = parse_endpoints(argv[index++]);
+    else
+    {
+      if (argc - index < 4)
+      {
+        throw std::invalid_argument{"Expected endpoints, command, application and key"};
+      }
+      options.endpoints = parse_endpoints(argv[index++]);
+    }
     const std::string_view command{argv[index++]};
     options.application = argv[index++];
     options.key = argv[index++];
@@ -293,6 +321,11 @@ namespace
     if (options.request_id && !writes_configuration(options.command))
     {
       throw std::invalid_argument{"--request-id requires a write command"};
+    }
+    if (options.shard_layout)
+    {
+      const auto layout{cipple::sharding::ShardLayout::load(*options.shard_layout)};
+      options.endpoints = application_endpoints(layout.route(options.application, options.key));
     }
     if (options.selector == Selector::kHash)
     {
@@ -353,15 +386,27 @@ namespace
         {
           return;
         }
-        if (writing && command_started)
+        const bool wrong_shard{
+          error == cipple::client::make_error_code(cipple::client::ClientError::kWrongShard)
+        };
+        if (writing && command_started && !wrong_shard)
         {
           std::cerr << "Write result unknown for " << request_id->to_string()
-            << ". Retry with the same --request-id and the same cluster endpoint list.\n";
+            << ". Retry with the same --request-id and "
+            << (options.shard_layout ? "the same shard layout.\n" : "the same cluster endpoint list.\n");
         }
         if (error == asio::error::timed_out && options.endpoints.size() == 1 && !watching)
         {
-          std::cerr << "If this endpoint is a follower, provide a comma-separated list of the cluster's "
-            "application endpoints; redirect addresses are not trusted.\n";
+          if (options.shard_layout)
+          {
+            std::cerr << "If this endpoint is a follower, check that the shard layout lists every application endpoint "
+              "in the shard; redirect addresses are not trusted.\n";
+          }
+          else
+          {
+            std::cerr << "If this endpoint is a follower, provide a comma-separated list of the cluster's "
+              "application endpoints; redirect addresses are not trusted.\n";
+          }
         }
         std::cerr << (error == asio::error::timed_out ? "Request timed out" : error.message()) << '\n';
         finish(1);
@@ -659,11 +704,18 @@ int main(const int argc, char** argv)
       "       cipple_client [OPTIONS] ENDPOINT get|get-base|delete APP KEY\n"
       "       cipple_client [OPTIONS] ENDPOINT incremental APP KEY BASE_UUID add_entry|remove_entry VALUE\n"
       "       cipple_client [--state DB] [--resume-after N] [--unsubscribe-after COUNT] ENDPOINT subscribe APP KEY\n"
-      "Options: --selector ordered|hash (alias --route), --timeout-ms MS, --verbose\n"
-      "         --request-id UUID (write command)\n"
+      "       cipple_client [OPTIONS] --shards FILE COMMAND APP KEY [ARGS...]\n"
+      "Options: --shards FILE (route by APP and KEY; omit ENDPOINT), --selector ordered|hash (alias --route)\n"
+      "         --timeout-ms MS, --verbose, --request-id UUID (write command)\n"
       "         --heartbeat-ms MS (subscribe, defaults to 1000 with --state)\n"
+      "Shard mode uses only the selected shard's application endpoints; wrong-shard replies are fatal.\n"
       "Ctrl+C unsubscribes on the active subscription connection.\n";
     return 2;
+  }
+  catch (const std::runtime_error& error)
+  {
+    std::cerr << error.what() << '\n';
+    return 1;
   }
   try
   {

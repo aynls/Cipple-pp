@@ -9,6 +9,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <type_traits>
 #include <unordered_map>
 #include <vector>
 
@@ -41,6 +42,13 @@ namespace cipple::tcp
 
 namespace cipple::client
 {
+  enum class ClientError
+  {
+    kWrongShard = 1,
+  };
+
+  boost::system::error_code make_error_code(ClientError error) noexcept;
+
   struct ClientHandlers
   {
     std::function<void()> on_connected;
@@ -138,5 +146,13 @@ namespace cipple::client
     std::unordered_map<Uuid, PendingResponse> _pending;
     std::shared_ptr<tcp::Session> _session;
     std::shared_ptr<tcp::Connector> _connector;
+  };
+}
+
+namespace boost::system
+{
+  template <>
+  struct is_error_code_enum<cipple::client::ClientError> : std::true_type
+  {
   };
 }
