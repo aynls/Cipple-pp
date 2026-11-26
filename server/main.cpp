@@ -1,4 +1,5 @@
 #include <boost/asio/io_context.hpp>
+#include <boost/asio/ip/tcp.hpp>
 #include <boost/asio/signal_set.hpp>
 
 #include <algorithm>
@@ -6,7 +7,9 @@
 #include <csignal>
 #include <cstdint>
 #include <exception>
+#include <filesystem>
 #include <iostream>
+#include <memory>
 #include <optional>
 #include <stdexcept>
 #include <string>
@@ -16,6 +19,7 @@
 
 #include "raft/raft_node.hpp"
 #include "server.hpp"
+#include "sharding/shard_layout.hpp"
 
 namespace
 {
@@ -81,17 +85,15 @@ namespace
   void add_local_member(cipple::raft::RaftOptions& options, const asio::ip::address_v4 host,
                         const std::uint16_t port)
   {
-    const auto local{address(host, port)};
-    if (options.node_id <= 0 || options.snapshot_distance <= 0)
+    if (options.node_id <= 0)
     {
-      throw std::invalid_argument{"node id and snapshot distance must be positive"};
+      throw std::invalid_argument{"node id must be positive"};
     }
     if (!options.members.empty() && port == 0)
     {
       throw std::invalid_argument{"--raft-port is required with --peers"};
     }
-    options.members.push_back({options.node_id, local});
-
+    options.members.push_back({options.node_id, address(host, port)});
     for (auto member{options.members.begin()}; member != options.members.end(); ++member)
     {
       if (std::any_of(options.members.begin(), member, [&](const auto& earlier)
@@ -111,7 +113,9 @@ int main(const int argc, char** argv)
   {
     std::cerr << "Usage: cipple_server <port> <database> [--bind <ip>] [--id <id>]\n"
               << "       [--raft-port <port>] [--raft-host <ipv4>] [--peers <id@ipv4:raft-port,...>]\n"
-              << "       [--snapshot-distance <entries>]\n";
+              << "       [--snapshot-distance <entries>]\n"
+              << "   or: cipple_server <port> <database> --shards <file> --shard-id <uint32> --id <id>\n"
+              << "       [--bind <ip>] [--snapshot-distance <entries>]\n";
     return 2;
   }
 
@@ -119,8 +123,12 @@ int main(const int argc, char** argv)
   {
     const auto port{parse_integer<std::uint16_t>(argv[1], "listen port")};
     asio::ip::address bind{asio::ip::address_v4::loopback()};
+    std::optional<asio::ip::address> explicit_bind;
     std::optional<asio::ip::address_v4> advertised_host;
-    std::uint16_t raft_port{0};
+    std::optional<std::filesystem::path> shards_file;
+    std::optional<std::uint32_t> shard_id;
+    std::optional<std::uint16_t> raft_port;
+    bool id_present{false};
     cipple::raft::RaftOptions options;
     options.node_id = 1;
     for (int i{3}; i < argc; i += 2)
@@ -130,10 +138,20 @@ int main(const int argc, char** argv)
       if (flag == "--bind")
       {
         bind = asio::ip::make_address(value);
+        explicit_bind = bind;
       }
       else if (flag == "--id")
       {
+        id_present = true;
         options.node_id = parse_integer<std::int32_t>(value, "node id");
+      }
+      else if (flag == "--shards")
+      {
+        shards_file = std::filesystem::path{std::string{value}};
+      }
+      else if (flag == "--shard-id")
+      {
+        shard_id = parse_integer<std::uint32_t>(value, "shard id");
       }
       else if (flag == "--raft-port")
       {
@@ -156,20 +174,89 @@ int main(const int argc, char** argv)
         throw std::invalid_argument{std::string{"invalid server option: "} + std::string{flag}};
       }
     }
-    if (!advertised_host && !options.members.empty() && (!bind.is_v4() || bind.is_unspecified()))
+
+    if (options.snapshot_distance <= 0)
     {
-      throw std::invalid_argument{"--raft-host is required when the application bind has no IPv4 address"};
+      throw std::invalid_argument{"snapshot distance must be positive"};
     }
-    const auto host{advertised_host ? *advertised_host
-      : bind.is_v4() && !bind.is_unspecified() ? raft_host(bind.to_string()) : asio::ip::address_v4::loopback()};
-    if (port != 0 && raft_port == port)
+    if (shards_file.has_value() != shard_id.has_value())
     {
-      throw std::invalid_argument{"application and Raft ports must be different"};
+      throw std::invalid_argument{"--shards and --shard-id must be used together"};
     }
-    add_local_member(options, host, raft_port);
+    const bool sharded{shards_file.has_value()};
+    if (sharded && (!options.members.empty() || advertised_host || raft_port))
+    {
+      throw std::invalid_argument{"--shards mode cannot be combined with --peers, --raft-host, or --raft-port"};
+    }
+
+    std::optional<cipple::server::ShardOwnership> ownership;
+    if (sharded)
+    {
+      if (!id_present || options.node_id <= 0)
+      {
+        throw std::invalid_argument{"a positive --id is required with --shards"};
+      }
+      std::shared_ptr<const cipple::sharding::ShardLayout> layout{
+        std::make_shared<cipple::sharding::ShardLayout>(cipple::sharding::ShardLayout::load(*shards_file))
+      };
+      const auto* shard{layout->find(*shard_id)};
+      if (shard == nullptr)
+      {
+        throw std::invalid_argument{"shard layout does not contain shard " + std::to_string(*shard_id)};
+      }
+      const auto member{std::find_if(shard->members.begin(), shard->members.end(), [&](const auto& candidate)
+      {
+        return candidate.id == options.node_id;
+      })};
+      if (member == shard->members.end())
+      {
+        throw std::invalid_argument{"shard " + std::to_string(*shard_id) + " has no member "
+                                    + std::to_string(options.node_id)};
+      }
+      if (port != member->application.port())
+      {
+        throw std::invalid_argument{"application port does not match the shard layout"};
+      }
+      if (port != 0 && member->raft.port() == port)
+      {
+        throw std::invalid_argument{"application and Raft ports must be different"};
+      }
+
+      const auto application_address{member->application.address()};
+      if (explicit_bind)
+      {
+        const bool wildcard{explicit_bind->is_v4() && explicit_bind->to_v4().is_unspecified()};
+        if (*explicit_bind != application_address && !wildcard)
+        {
+          throw std::invalid_argument{"--bind must be the shard application address or IPv4 wildcard"};
+        }
+      }
+      else
+      {
+        bind = application_address;
+      }
+
+      ownership = cipple::server::ShardOwnership{*shard_id, std::move(layout)};
+    }
+    else
+    {
+      if (!advertised_host && !options.members.empty() && (!bind.is_v4() || bind.is_unspecified()))
+      {
+        throw std::invalid_argument{"--raft-host is required when the application bind has no IPv4 address"};
+      }
+      const auto host{advertised_host ? *advertised_host
+        : bind.is_v4() && !bind.is_unspecified() ? raft_host(bind.to_string()) : asio::ip::address_v4::loopback()};
+      if (port != 0 && raft_port == port)
+      {
+        throw std::invalid_argument{"application and Raft ports must be different"};
+      }
+      add_local_member(options, host, raft_port.value_or(0));
+    }
 
     asio::io_context context;
-    const auto server{cipple::server::Server::start(context, {bind, port}, argv[2], std::move(options))};
+    const auto server{
+      cipple::server::Server::start(context, {bind, port}, argv[2], std::move(options), std::move(ownership))
+    };
     asio::signal_set signals{context, SIGINT, SIGTERM};
     signals.async_wait([&](const boost::system::error_code error, int)
     {

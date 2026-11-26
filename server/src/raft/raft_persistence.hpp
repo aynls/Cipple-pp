@@ -17,6 +17,8 @@ namespace cipple::raft
 {
   class RaftDatabase;
 
+  bool has_initialized_database(const RaftOptions& options);
+
   // SQLite-backed NuRaft log store. Every mutating method commits before it
   // returns; with WAL and synchronous=FULL that commit is durable, so a Raft
   // append response is never generated for a merely cached entry.

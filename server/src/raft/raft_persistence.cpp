@@ -57,6 +57,8 @@ namespace cipple::raft
     constexpr std::string_view kNodeIdKey{"node_id"};
     constexpr std::string_view kServerStateKey{"server_state"};
     constexpr std::string_view kClusterConfigKey{"cluster_config"};
+    constexpr std::string_view kShardIdMetaKey{"shard_id"};
+    constexpr std::string_view kShardLayoutIdentityMetaKey{"shard_layout_identity"};
     constexpr std::int64_t kFormatVersion{1};
 
     [[noreturn]] void throw_sqlite(sqlite3* db, const int error, const char* operation)
@@ -365,6 +367,19 @@ namespace cipple::raft
       statement.execute();
     }
 
+    void put_meta_text(sqlite3* db, const std::string_view key, const std::string_view value)
+    {
+      const Statement statement{
+        db, R"sql(
+        INSERT INTO raft_meta(key, value) VALUES (?1, ?2)
+        ON CONFLICT(key) DO UPDATE SET value = excluded.value
+      )sql"
+      };
+      statement.bind_text(1, key);
+      statement.bind_text(2, value);
+      statement.execute();
+    }
+
     std::optional<std::int64_t> read_meta_integer(sqlite3* db, const std::string_view key)
     {
       const Statement statement{db, "SELECT value FROM raft_meta WHERE key = ?1"};
@@ -399,6 +414,66 @@ namespace cipple::raft
       }
       return std::vector<std::uint8_t>{reinterpret_cast<const std::uint8_t*>(value.data()),
                                        reinterpret_cast<const std::uint8_t*>(value.data()) + value.size()};
+    }
+
+    std::optional<std::string> read_meta_text(sqlite3* db, const std::string_view key)
+    {
+      const Statement statement{db, "SELECT value FROM raft_meta WHERE key = ?1"};
+      statement.bind_text(1, key);
+      if (!statement.next())
+      {
+        return std::nullopt;
+      }
+      if (statement.type(0) != SQLITE_TEXT)
+      {
+        throw std::runtime_error{"Raft SQLite metadata has non-text value for " + std::string{key}};
+      }
+      return statement.text(0);
+    }
+
+    void validate_shard_binding(const std::optional<ShardBinding>& binding)
+    {
+      if (binding && binding->layout_identity.empty())
+      {
+        throw std::invalid_argument{"Raft shard layout identity must not be empty"};
+      }
+    }
+
+    void validate_persisted_shard_binding(sqlite3* db, const std::optional<ShardBinding>& requested)
+    {
+      const auto shard_id{read_meta_integer(db, kShardIdMetaKey)};
+      const auto layout_identity{read_meta_text(db, kShardLayoutIdentityMetaKey)};
+      if (shard_id.has_value() != layout_identity.has_value())
+      {
+        throw std::runtime_error{"Raft SQLite database has an incomplete shard binding"};
+      }
+      if (!shard_id)
+      {
+        if (requested)
+        {
+          throw std::runtime_error{"Raft SQLite database has no persisted shard binding"};
+        }
+        return;
+      }
+      if (*shard_id < 0 || *shard_id > std::numeric_limits<std::uint32_t>::max() || layout_identity->empty())
+      {
+        throw std::runtime_error{"Raft SQLite database has an invalid persisted shard binding"};
+      }
+      if (!requested)
+      {
+        throw std::runtime_error{"Raft SQLite database is bound to a shard and requires sharded startup"};
+      }
+      if (static_cast<std::uint32_t>(*shard_id) != requested->shard_id
+        || *layout_identity != requested->layout_identity)
+      {
+        throw std::runtime_error{"Raft SQLite database is bound to a different shard or layout identity"};
+      }
+    }
+
+    void write_shard_binding(sqlite3* db, const ShardBinding& binding)
+    {
+      put_meta_integer(db, kShardIdMetaKey, binding.shard_id);
+      put_meta_text(db, kShardLayoutIdentityMetaKey, binding.layout_identity);
     }
 
     nuraft::ulong read_start_index(sqlite3* db)
@@ -621,6 +696,28 @@ namespace cipple::raft
       payload->pos(0);
       return nuraft::cs_new<nuraft::log_entry>(term, payload, type, timestamp, has_crc, crc, false);
     }
+  }
+
+  bool has_initialized_database(const RaftOptions& options)
+  {
+    if (!std::filesystem::exists(options.database))
+    {
+      return false;
+    }
+
+    const auto path{options.database.u8string()};
+    sqlite3* handle{nullptr};
+    const auto opened{sqlite3_open_v2(reinterpret_cast<const char*>(path.c_str()), &handle,
+                                    SQLITE_OPEN_READONLY | SQLITE_OPEN_FULLMUTEX, nullptr)};
+    const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> db{handle, sqlite3_close};
+    check(db.get(), opened, "open Raft database for startup inspection");
+    const Statement schema{db.get(), "SELECT 1 FROM sqlite_schema WHERE type='table' AND name='raft_meta'"};
+    if (!schema.next() || !read_meta_integer(db.get(), kFormatVersionKey))
+    {
+      return false;
+    }
+    validate_persisted_shard_binding(db.get(), options.shard_binding);
+    return true;
   }
 
   class RaftDatabase
@@ -1042,6 +1139,7 @@ namespace cipple::raft
   RaftStateManager::RaftStateManager(const RaftOptions& options)
     : _node_id{options.node_id}
   {
+    validate_shard_binding(options.shard_binding);
     const auto canonical{canonicalize_members(options)};
     _members = canonical.members;
     _self_endpoint = canonical.self_endpoint;
@@ -1059,6 +1157,10 @@ namespace cipple::raft
         put_meta_integer(db, kNodeIdKey, _node_id);
         put_meta_integer(db, kStartIndexKey, 1);
         put_meta_integer(db, kBoundaryTermKey, 0);
+        if (options.shard_binding)
+        {
+          write_shard_binding(db, *options.shard_binding);
+        }
         write_members(db, _members);
         nuraft::cluster_config initial;
         for (const auto& member : _members)
@@ -1074,6 +1176,7 @@ namespace cipple::raft
         {
           throw std::runtime_error{"Unsupported Raft SQLite format version " + std::to_string(*version)};
         }
+        validate_persisted_shard_binding(db, options.shard_binding);
         if (read_meta_integer(db, kNodeIdKey) != _node_id)
         {
           throw std::runtime_error{"Raft database was initialized with a different node id"};

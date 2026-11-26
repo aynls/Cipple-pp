@@ -9,11 +9,14 @@
 #endif
 #include <windows.h>
 
+#include <algorithm>
 #include <atomic>
 #include <chrono>
 #include <iostream>
 #include <optional>
 #include <stdexcept>
+#include <string>
+#include <string_view>
 #include <system_error>
 #include <utility>
 #include <vector>
@@ -21,6 +24,11 @@
 #include "binary/buffer_writer.hpp"
 #include "protocol/cluster/history_lost_response.hpp"
 #include "protocol/cluster/retry_response.hpp"
+#include "protocol/cluster/wrong_shard_response.hpp"
+#include "protocol/configuration/delete_request.hpp"
+#include "protocol/configuration/get_request.hpp"
+#include "protocol/configuration/incremental_update_request.hpp"
+#include "protocol/configuration/put_request.hpp"
 #include "protocol/heartbeat/heartbeat_response.hpp"
 #include "protocol/replication/sync_response.hpp"
 #include "protocol/subscription/dispatch_response.hpp"
@@ -30,6 +38,8 @@
 #include "protocol/subscription/unsubscribe_response.hpp"
 #include "raft/configuration_machine.hpp"
 #include "raft/raft_node.hpp"
+#include "raft/raft_persistence.hpp"
+#include "sharding/shard_layout.hpp"
 #include "storage/sqlite_storage.hpp"
 #include "subscription/subscriptions.hpp"
 #include "tcp/session.hpp"
@@ -76,6 +86,64 @@ namespace cipple::server
         session.close();
       }
     }
+
+    struct RoutedTopic
+    {
+      std::string_view application;
+      std::string_view key;
+    };
+
+    template <typename Request>
+    RoutedTopic request_topic(const message::Message& message) noexcept
+    {
+      const auto& request{static_cast<const Request&>(message)};
+      return {request.application_name(), request.key()};
+    }
+
+    std::optional<RoutedTopic> routed_topic(const message::Message& message) noexcept
+    {
+      switch (message.type())
+      {
+      case MessageType::kPutRequest:
+        return request_topic<message::PutRequest>(message);
+      case MessageType::kDeleteRequest:
+        return request_topic<message::DeleteRequest>(message);
+      case MessageType::kIncrementalUpdateRequest:
+        return request_topic<message::IncrementalUpdateRequest>(message);
+      case MessageType::kGetRequest:
+        return request_topic<message::GetRequest>(message);
+      case MessageType::kSubscribeRequest:
+        return request_topic<message::SubscribeRequest>(message);
+      case MessageType::kUnsubscribeRequest:
+        return request_topic<message::UnsubscribeRequest>(message);
+      default:
+        return std::nullopt;
+      }
+    }
+
+    void configure_shard(const ShardOwnership& ownership, raft::RaftOptions& options)
+    {
+      if (!ownership.layout || !options.members.empty())
+      {
+        throw std::invalid_argument{"sharded startup requires a layout as the only source of Raft membership"};
+      }
+      const auto* shard{ownership.layout->find(ownership.shard_id)};
+      if (shard == nullptr)
+      {
+        throw std::invalid_argument{"shard layout does not contain the owned shard"};
+      }
+      options.members.reserve(shard->members.size());
+      for (const auto& member : shard->members)
+      {
+        options.members.push_back({member.id, member.raft.address().to_string() + ':' +
+          std::to_string(member.raft.port())});
+      }
+      if (std::ranges::find(options.members, options.node_id, &raft::RaftMember::id) == options.members.end())
+      {
+        throw std::invalid_argument{"Raft node id is not a member of the owned shard"};
+      }
+      options.shard_binding = raft::ShardBinding{ownership.shard_id, ownership.layout->identity()};
+    }
   }
 
   class Server::DatabaseLock final
@@ -106,23 +174,34 @@ namespace cipple::server
   };
 
   std::shared_ptr<Server> Server::start(asio::io_context& context, const asio::ip::tcp::endpoint& endpoint,
-                                        const std::filesystem::path& database, raft::RaftOptions options)
+                                        const std::filesystem::path& database, raft::RaftOptions options,
+                                        std::optional<ShardOwnership> shard)
   {
+    if (shard)
+    {
+      configure_shard(*shard, options);
+    }
+    else if (options.shard_binding)
+    {
+      throw std::invalid_argument{"a persisted shard binding requires shard ownership"};
+    }
+
     const auto path{std::filesystem::weakly_canonical(database)};
     auto server{std::shared_ptr<Server>{new Server{context, endpoint}}};
     server->_database_lock = std::make_unique<DatabaseLock>(path);
 
     options.database = path;
     options.database += ".raft";
-    const bool has_raft_database{std::filesystem::exists(options.database)};
+    const bool has_raft_database{raft::has_initialized_database(options)};
     if (has_raft_database && !std::filesystem::exists(path))
     {
       throw std::runtime_error{"application database missing beside its Raft database"};
     }
+    server->_shard = std::move(shard);
 
     const auto notification_pending{std::make_shared<std::atomic_bool>(false)};
     server->_machine = std::make_shared<raft::ConfigurationMachine>(
-      path, options.node_id, options.members.size() > 1,
+      path, options.node_id, server->_shard.has_value() || options.members.size() > 1,
       [&context, weak{server->weak_from_this()}, notification_pending]
       {
         if (!notification_pending->exchange(true))
@@ -231,6 +310,25 @@ namespace cipple::server
     _subscriptions->attach(id, std::move(session));
   }
 
+  std::optional<std::uint32_t> Server::wrong_shard(const message::Message& message) const noexcept
+  {
+    if (!_shard)
+    {
+      return std::nullopt;
+    }
+    const auto topic{routed_topic(message)};
+    if (!topic)
+    {
+      return std::nullopt;
+    }
+    const auto& target{_shard->layout->route(topic->application, topic->key)};
+    if (target.id == _shard->shard_id)
+    {
+      return std::nullopt;
+    }
+    return target.id;
+  }
+
   void Server::submit(tcp::Session& session, const message::Message& command)
   {
     const auto id{command.uuid()};
@@ -321,6 +419,11 @@ namespace cipple::server
   {
     try
     {
+      if (const auto target_shard{wrong_shard(message)})
+      {
+        send(session, message::WrongShardResponse{message.uuid(), *target_shard});
+        return;
+      }
       switch (message.type())
       {
       case MessageType::kPutRequest:

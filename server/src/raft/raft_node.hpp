@@ -23,12 +23,19 @@ namespace cipple::raft
     std::string endpoint;
   };
 
+  struct ShardBinding
+  {
+    std::uint32_t shard_id;
+    std::string layout_identity;
+  };
+
   struct RaftOptions
   {
     std::int32_t node_id;
     std::vector<RaftMember> members;
     std::filesystem::path database;
     std::int32_t snapshot_distance{256};
+    std::optional<ShardBinding> shard_binding{};
   };
 
   // Owns one NuRaft server and the single worker that submits client commands
