@@ -30,7 +30,7 @@ namespace cipple::raft
   {
   public:
     ConfigurationMachine(const std::filesystem::path& database, std::int32_t node_id,
-                         bool clustered, std::function<void()> on_applied);
+                         std::function<void()> on_applied);
     ~ConfigurationMachine() noexcept override;
 
     storage::SqliteStorage& reader() const noexcept;

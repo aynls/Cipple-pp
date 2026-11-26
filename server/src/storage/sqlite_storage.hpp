@@ -18,7 +18,6 @@ namespace cipple::storage
     struct OpenOptions
     {
       bool raft{false};
-      bool clustered{false};
     };
 
     struct RaftMutationResult
@@ -47,7 +46,7 @@ namespace cipple::storage
 
     // Opens a file-backed database and requires WAL mode.
     explicit SqliteStorage(const std::filesystem::path& path);
-    // Raft mode adds its bookkeeping schema without changing the legacy tables.
+    // Raft mode also opens the tables for log application and snapshots.
     SqliteStorage(const std::filesystem::path& path, const OpenOptions& options);
     ~SqliteStorage() noexcept override;
 
@@ -83,7 +82,6 @@ namespace cipple::storage
                                  std::int64_t log_index);
     void apply_raft_progress(std::int64_t log_index);
 
-    std::int64_t raft_revision_base() const noexcept;
     std::int64_t raft_applied_index() const;
     std::optional<RaftSnapshotInfo> raft_snapshot_info() const;
     void record_raft_snapshot(const RaftSnapshotInfo& snapshot);
@@ -112,6 +110,5 @@ namespace cipple::storage
     std::unique_ptr<sqlite3, CloseDatabase> _db;
     mutable std::mutex _mutex;
     bool _raft_mode{false};
-    std::int64_t _raft_revision_base{0};
   };
 }

@@ -29,7 +29,6 @@ namespace
   using cipple::entity::EntityMessage;
   using cipple::raft::RaftOptions;
   using cipple::server::Server;
-  using cipple::storage::AppendResult;
   using cipple::storage::SqliteStorage;
 
   class SingleServerTest : public testing::Test
@@ -180,22 +179,22 @@ namespace
     EXPECT_TRUE(reads(*fresh, std::string{}));
   }
 
-  TEST_F(SingleServerTest, ReadsAnExistingIncrementAndOrdersTheNextWriteAfterIt)
+  TEST_F(SingleServerTest, ReadsACommittedIncrementAfterReopen)
   {
-    constexpr std::int64_t future_timestamp{9'000'000'000'000};
-    const EntityMessage base{Uuid::generate(), "app", "key", future_timestamp, 2, EntityMessage::Update{"a-x-x-b"}};
-    const EntityMessage increment{
-      Uuid::generate(), "app", "key", future_timestamp + 1, 2,
-      EntityMessage::IncrementalUpdate{base.uuid(), cipple::entity::AtomicOperation::kRemoveEntry, "-x"}
-    };
+    start_server();
+    auto client{Client::start(_io, _server->local_endpoint())};
+    ASSERT_TRUE(run_until([&] { return client->is_connected(); }));
+    const auto base{Uuid::generate()};
+    ASSERT_EQ(request<bool>([&](auto done) { client->put("app", "key", "a-x-x-b", std::move(done), base); }), true);
+    ASSERT_EQ(request<bool>([&](auto done)
     {
-      SqliteStorage storage{_db};
-      ASSERT_EQ(storage.append(base, {}), AppendResult::kInserted);
-      ASSERT_EQ(storage.append(increment, {}), AppendResult::kInserted);
-    }
+      client->incremental_update("app", "key", base, cipple::entity::AtomicOperation::kRemoveEntry, "-x", std::move(done));
+    }), true);
+    client->stop();
+    _server.reset();
 
     start_server();
-    const auto client{Client::start(_io, _server->local_endpoint())};
+    client = Client::start(_io, _server->local_endpoint());
     ASSERT_TRUE(run_until([&] { return client->is_connected(); }));
     ASSERT_TRUE(reads(*client, "a-b"));
     ASSERT_EQ(request<bool>([&](auto done) { client->put("app", "key", "new", std::move(done)); }), true);

@@ -475,7 +475,7 @@ namespace cipple::raft
   };
 
   ConfigurationMachine::ConfigurationMachine(const std::filesystem::path& database, const std::int32_t node_id,
-                                             const bool clustered, std::function<void()> on_applied)
+                                             std::function<void()> on_applied)
     : _database{database}
       , _node_id{node_id}
       , _on_applied{std::move(on_applied)}
@@ -484,10 +484,10 @@ namespace cipple::raft
     {
       throw std::invalid_argument{"Raft state machine requires a positive node id"};
     }
-    _writer = std::make_unique<SqliteStorage>(database, SqliteStorage::OpenOptions{.raft = true, .clustered = clustered});
+    _writer = std::make_unique<SqliteStorage>(database, SqliteStorage::OpenOptions{.raft = true});
     recover_pending_snapshot();
     load_durable_snapshot();
-    _reader = std::make_unique<SqliteStorage>(database, SqliteStorage::OpenOptions{.raft = true, .clustered = clustered});
+    _reader = std::make_unique<SqliteStorage>(database, SqliteStorage::OpenOptions{.raft = true});
     _last_commit_index.store(static_cast<std::uint64_t>(_writer->raft_applied_index()));
     cleanup_snapshot_files();
   }
@@ -542,19 +542,13 @@ namespace cipple::raft
     const auto command_hash{sha256(command)};
     auto decoded{tcp::decode_message(command)};
     const auto sqlite_index{checked_log_index(log_idx)};
-    const auto revision_base{_writer->raft_revision_base()};
-    if (revision_base > std::numeric_limits<std::int64_t>::max() - sqlite_index)
-    {
-      throw std::overflow_error{"Raft revision cannot be represented in SQLite"};
-    }
-    const auto revision{revision_base + sqlite_index};
 
     std::vector<std::uint8_t> response;
     bool data_changed{false};
     if (const auto* request{dynamic_cast<const message::PutRequest*>(decoded.get())})
     {
       const entity::EntityMessage version{
-        request->uuid(), request->application_name(), request->key(), revision, 0,
+        request->uuid(), request->application_name(), request->key(), sqlite_index, 0,
         entity::EntityMessage::Update{request->value()}
       };
       const auto applied{_writer->apply_raft_mutation(version, command_hash, sqlite_index)};
@@ -564,7 +558,7 @@ namespace cipple::raft
     else if (const auto* request{dynamic_cast<const message::DeleteRequest*>(decoded.get())})
     {
       const entity::EntityMessage version{
-        request->uuid(), request->application_name(), request->key(), revision, 0,
+        request->uuid(), request->application_name(), request->key(), sqlite_index, 0,
         entity::EntityMessage::Delete{}
       };
       const auto applied{_writer->apply_raft_mutation(version, command_hash, sqlite_index)};
@@ -574,7 +568,7 @@ namespace cipple::raft
     else if (const auto* request{dynamic_cast<const message::IncrementalUpdateRequest*>(decoded.get())})
     {
       const entity::EntityMessage version{
-        request->uuid(), request->application_name(), request->key(), revision, 0,
+        request->uuid(), request->application_name(), request->key(), sqlite_index, 0,
         entity::EntityMessage::IncrementalUpdate{
           request->base_message_uuid(), request->atomic_operation(), request->value()
         }

@@ -79,12 +79,6 @@ namespace cipple::storage
     )sql"
     };
 
-    // Imported pre-Raft versions use HLC values near 2^62. This fixed base puts
-    // later Raft revisions above them while leaving 2^40 monotonically usable
-    // log indexes before the signed integer space is exhausted.
-    constexpr std::int64_t kMigrationRevisionBase{
-      std::numeric_limits<std::int64_t>::max() - (std::int64_t{1} << 40)
-    };
     constexpr std::size_t kSha256Length{32};
 
     constexpr char kRaftSchema[]{
@@ -106,9 +100,7 @@ namespace cipple::storage
       CREATE TABLE raft_state (
         id INTEGER PRIMARY KEY CHECK (id = 1),
         applied_index INTEGER NOT NULL,
-        revision_base INTEGER NOT NULL,
         journal_watermark INTEGER NOT NULL,
-        imported_legacy INTEGER NOT NULL CHECK (imported_legacy IN (0, 1)),
         snapshot_log_index INTEGER NOT NULL,
         snapshot_log_term INTEGER NOT NULL,
         snapshot_file_size INTEGER NOT NULL,
@@ -531,7 +523,7 @@ namespace cipple::storage
       execute_sql(db, R"sql(
         SELECT uuid, command_hash, accepted, log_index FROM request_result LIMIT 0;
         SELECT application_name, key, floor FROM journal_retention LIMIT 0;
-        SELECT id, applied_index, revision_base, journal_watermark, imported_legacy,
+        SELECT id, applied_index, journal_watermark,
                snapshot_log_index, snapshot_log_term, snapshot_file_size,
                snapshot_sha256, snapshot_metadata
           FROM raft_state LIMIT 0;
@@ -541,9 +533,7 @@ namespace cipple::storage
     struct RaftStateRow
     {
       std::int64_t applied_index{0};
-      std::int64_t revision_base{0};
       std::int64_t journal_watermark{0};
-      bool imported_legacy{false};
       SqliteStorage::RaftSnapshotInfo snapshot;
     };
 
@@ -562,7 +552,7 @@ namespace cipple::storage
     {
       const Statement query{
         db, R"sql(
-        SELECT applied_index, revision_base, journal_watermark, imported_legacy,
+        SELECT applied_index, journal_watermark,
                snapshot_log_index, snapshot_log_term, snapshot_file_size,
                snapshot_sha256, snapshot_metadata
         FROM raft_state WHERE id = 1
@@ -574,17 +564,15 @@ namespace cipple::storage
       }
       RaftStateRow state{
         .applied_index = query.integer(0),
-        .revision_base = query.integer(1),
-        .journal_watermark = query.integer(2),
-        .imported_legacy = query.integer(3) != 0,
+        .journal_watermark = query.integer(1),
       };
-      if (state.applied_index < 0 || state.revision_base < 0 || state.journal_watermark < 0)
+      if (state.applied_index < 0 || state.journal_watermark < 0)
       {
         throw std::runtime_error{"Raft storage state contains a negative counter"};
       }
-      const auto snapshot_index{query.integer(4)};
-      const auto snapshot_term{query.integer(5)};
-      const auto snapshot_size{query.integer(6)};
+      const auto snapshot_index{query.integer(2)};
+      const auto snapshot_term{query.integer(3)};
+      const auto snapshot_size{query.integer(4)};
       if (snapshot_index < 0 || snapshot_term < 0 || snapshot_size < 0)
       {
         throw std::runtime_error{"Raft snapshot state contains a negative value"};
@@ -594,8 +582,8 @@ namespace cipple::storage
       state.snapshot.file_size = static_cast<std::uint64_t>(snapshot_size);
       if (snapshot_index != 0)
       {
-        state.snapshot.sha256 = copy_sha256(query.bytes(7), "raft_state.snapshot_sha256");
-        const auto metadata{query.bytes(8)};
+        state.snapshot.sha256 = copy_sha256(query.bytes(5), "raft_state.snapshot_sha256");
+        const auto metadata{query.bytes(6)};
         state.snapshot.metadata.assign(metadata.begin(), metadata.end());
         if (state.snapshot.metadata.empty())
         {
@@ -605,20 +593,16 @@ namespace cipple::storage
       return state;
     }
 
-    void insert_initial_raft_state(sqlite3* db, const std::int64_t revision_base,
-                                   const std::int64_t journal_watermark, const bool imported_legacy)
+    void insert_initial_raft_state(sqlite3* db)
     {
       const Statement insert{
         db, R"sql(
-        INSERT INTO raft_state(id, applied_index, revision_base, journal_watermark, imported_legacy,
+        INSERT INTO raft_state(id, applied_index, journal_watermark,
                                snapshot_log_index, snapshot_log_term, snapshot_file_size,
                                snapshot_sha256, snapshot_metadata)
-        VALUES (1, 0, ?1, ?2, ?3, 0, 0, 0, NULL, NULL)
+        VALUES (1, 0, 0, 0, 0, 0, NULL, NULL)
       )sql"
       };
-      insert.bind(1, revision_base);
-      insert.bind(2, journal_watermark);
-      insert.bind(3, imported_legacy ? 1 : 0);
       insert.execute();
     }
 
@@ -680,31 +664,6 @@ namespace cipple::storage
         return std::nullopt;
       }
       return read_message(query);
-    }
-
-    enum class StoredMessageMatch
-    {
-      kMissing,
-      kMatch,
-      kMismatch,
-    };
-
-    StoredMessageMatch stored_message_match(sqlite3* db, const EntityMessage& message)
-    {
-      const auto sql{select_messages("WHERE m.uuid = ?1")};
-      const Statement query{db, sql.c_str()};
-      query.bind(1, message.uuid());
-      if (!query.next())
-      {
-        return StoredMessageMatch::kMissing;
-      }
-      if (query.integer(9) == 0)
-      {
-        return StoredMessageMatch::kMismatch;
-      }
-      const auto stored{read_message(query)};
-      return stored.application_name() == message.application_name() && stored.key() == message.key()
-        && stored.payload() == message.payload() ? StoredMessageMatch::kMatch : StoredMessageMatch::kMismatch;
     }
 
     bool mutation_is_acceptable(sqlite3* db, const EntityMessage& message)
@@ -887,15 +846,6 @@ namespace cipple::storage
       insert.execute();
     }
 
-    std::int64_t raft_revision(const RaftStateRow& state, const std::int64_t log_index)
-    {
-      if (log_index <= 0 || state.revision_base > std::numeric_limits<std::int64_t>::max() - log_index)
-      {
-        throw std::overflow_error{"Raft log index cannot be represented as a configuration revision"};
-      }
-      return state.revision_base + log_index;
-    }
-
     void complete_raft_apply(sqlite3* db, const RaftStateRow& state, const std::int64_t log_index,
                              const std::optional<std::int64_t> generated_event = std::nullopt)
     {
@@ -989,32 +939,15 @@ namespace cipple::storage
       _raft_mode = true;
       if (!table_exists(db, "raft_state"))
       {
-        const auto stored_rows{
-          scalar_integer(db, R"sql(
-          SELECT (SELECT COUNT(*) FROM item) + (SELECT COUNT(*) FROM message) +
-                 (SELECT COUNT(*) FROM delivery_log)
-        )sql")
-        };
-        const auto max_version{scalar_integer(db, "SELECT COALESCE(MAX(last_update), 0) FROM message")};
-        const auto max_sequence{scalar_integer(db, "SELECT COALESCE(MAX(sequence), 0) FROM delivery_log")};
-        if (stored_rows != 0 && options.clustered)
-        {
-          throw std::runtime_error{
-            "refusing to import a non-empty pre-Raft database directly into a new cluster"
-          };
-        }
-        if (stored_rows != 0 && (max_version >= kMigrationRevisionBase || max_sequence >= kMigrationRevisionBase))
-        {
-          throw std::runtime_error{"pre-Raft database versions exceed the safe migration offset"};
-        }
-        const bool import_legacy{stored_rows != 0};
-        const auto revision_base{import_legacy ? kMigrationRevisionBase : std::int64_t{0}};
-
         const Transaction transaction{db};
         if (!table_exists(db, "raft_state"))
         {
+          if (scalar_integer(db, "SELECT EXISTS(SELECT 1 FROM message)") != 0)
+          {
+            throw std::runtime_error{"cannot initialize Raft state over existing configuration events"};
+          }
           execute_sql(db, kRaftSchema, "initialize Raft storage schema");
-          insert_initial_raft_state(db, revision_base, max_sequence, import_legacy);
+          insert_initial_raft_state(db);
         }
         check_raft_schema(db);
         transaction.commit();
@@ -1023,7 +956,6 @@ namespace cipple::storage
       {
         check_raft_schema(db);
       }
-      _raft_revision_base = read_raft_state(db).revision_base;
     }
   }
 
@@ -1355,8 +1287,7 @@ namespace cipple::storage
     {
       throw std::runtime_error{"Raft log application order regressed"};
     }
-    const auto revision{raft_revision(state, log_index)};
-    if (message.last_update() != revision || message.last_update_server_id() != 0)
+    if (message.last_update() != log_index || message.last_update_server_id() != 0)
     {
       throw std::logic_error{"Raft entity revision does not match its log index"};
     }
@@ -1371,31 +1302,17 @@ namespace cipple::storage
     }
     else
     {
-      switch (stored_message_match(db, message))
+      success = mutation_is_acceptable(db, message);
+      if (success)
       {
-      case StoredMessageMatch::kMatch:
-        // A database imported from the pre-Raft server has entities whose
-        // original command digest is unknowable. Payload equality is the old
-        // retry rule; the compact digest row below is learned from this retry.
-        success = true;
-        break;
-      case StoredMessageMatch::kMismatch:
-        success = false;
-        break;
-      case StoredMessageMatch::kMissing:
-        success = mutation_is_acceptable(db, message);
-        if (success)
-        {
-          insert_raft_message(db, message, revision);
-          trim_raft_topic(db, message.application_name(), message.key());
-          data_changed = true;
-        }
-        break;
+        insert_raft_message(db, message, log_index);
+        trim_raft_topic(db, message.application_name(), message.key());
+        data_changed = true;
       }
       insert_request_result(db, message.uuid(), command_hash, success, log_index);
     }
 
-    complete_raft_apply(db, state, log_index, data_changed ? std::optional{revision} : std::nullopt);
+    complete_raft_apply(db, state, log_index, data_changed ? std::optional{log_index} : std::nullopt);
     transaction.commit();
     return {success, data_changed};
   }
@@ -1465,11 +1382,6 @@ namespace cipple::storage
     const auto state{read_raft_state(db)};
     complete_raft_apply(db, state, log_index);
     transaction.commit();
-  }
-
-  std::int64_t SqliteStorage::raft_revision_base() const noexcept
-  {
-    return _raft_revision_base;
   }
 
   std::int64_t SqliteStorage::raft_applied_index() const

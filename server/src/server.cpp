@@ -201,7 +201,7 @@ namespace cipple::server
 
     const auto notification_pending{std::make_shared<std::atomic_bool>(false)};
     server->_machine = std::make_shared<raft::ConfigurationMachine>(
-      path, options.node_id, server->_shard.has_value() || options.members.size() > 1,
+      path, options.node_id,
       [&context, weak{server->weak_from_this()}, notification_pending]
       {
         if (!notification_pending->exchange(true))
