@@ -8,6 +8,7 @@ add_library(cipple_common STATIC
         entity/resolve.cpp
         protocol/cluster/history_lost_response.cpp
         protocol/cluster/retry_response.cpp
+        protocol/cluster/wrong_shard_response.cpp
         protocol/configuration/delete_request.cpp
         protocol/configuration/delete_response.cpp
         protocol/configuration/get_request.cpp
@@ -30,6 +31,7 @@ add_library(cipple_common STATIC
         protocol/subscription/subscribe_response.cpp
         protocol/subscription/unsubscribe_request.cpp
         protocol/subscription/unsubscribe_response.cpp
+        sharding/shard_layout.cpp
         tcp/connector.cpp
         tcp/session.cpp
 )

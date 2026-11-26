@@ -26,6 +26,7 @@ namespace cipple::message
     kDispatchResponse = 17,
     kRetryResponse = 18,
     kHistoryLostResponse = 19,
+    kWrongShardResponse = 20,
   };
 
   std::uint8_t to_byte(MessageType type) noexcept;

@@ -5,7 +5,9 @@ add_executable(cipple_tests
         common/buffer_reader_test.cpp
         common/buffer_writer_test.cpp
         common/message_protocol_test.cpp
+        common/shard_layout_test.cpp
         common/tcp_transport_test.cpp
+        common/wrong_shard_response_test.cpp
         server/raft_persistence_test.cpp
         server/sqlite_storage_test.cpp
         client/subscription_store_test.cpp
