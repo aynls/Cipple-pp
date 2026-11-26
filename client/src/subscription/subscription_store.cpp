@@ -148,8 +148,11 @@ namespace cipple::client
 
     bool already_stored(Statement& lookup, const message::DispatchRequest& dispatch, const std::string_view encoded)
     {
+      const auto& version{dispatch.entity()};
       const ResetStatement reset{lookup};
-      lookup.bind_blob(1, dispatch.entity().uuid().bytes());
+      lookup.bind_blob(1, version.application_name());
+      lookup.bind_blob(2, version.key());
+      lookup.bind_blob(3, version.uuid().bytes());
       if (!lookup.step())
       {
         return false;
@@ -212,6 +215,7 @@ namespace cipple::client
       advance.bind_int(3, sequence);
       advance.step();
     }
+
   }
 
   struct SubscriptionStore::Statements
@@ -224,7 +228,9 @@ namespace cipple::client
     Statement lookup_cursor;
 
     explicit Statements(sqlite3* database)
-      : find_event{database, "SELECT encoded, value FROM client_event WHERE uuid = ?1;"}
+      : find_event{
+          database, "SELECT encoded, value FROM client_event WHERE application=?1 AND key=?2 AND uuid=?3;"
+        }
         , find_base{
           database, R"sql(
           SELECT value FROM client_event
@@ -300,7 +306,7 @@ namespace cipple::client
     execute(database, "PRAGMA journal_mode=WAL; PRAGMA synchronous=FULL;");
     execute(database, R"sql(
       CREATE TABLE IF NOT EXISTS client_event (
-        uuid BLOB NOT NULL PRIMARY KEY CHECK (length(uuid) = 16),
+        uuid BLOB NOT NULL CHECK (length(uuid) = 16),
         application BLOB NOT NULL,
         key BLOB NOT NULL,
         last_update INTEGER NOT NULL,
@@ -309,17 +315,11 @@ namespace cipple::client
         encoded BLOB NOT NULL,
         value BLOB,
         first_endpoint TEXT NOT NULL,
-        first_sequence INTEGER NOT NULL CHECK (first_sequence > 0)
+        first_sequence INTEGER NOT NULL CHECK (first_sequence > 0),
+        PRIMARY KEY(application, key, uuid)
       ) WITHOUT ROWID;
       CREATE INDEX IF NOT EXISTS client_event_by_version
         ON client_event(application, key, last_update DESC, last_update_server_id DESC, uuid DESC);
-      CREATE TABLE IF NOT EXISTS client_cursor (
-        endpoint TEXT NOT NULL,
-        application BLOB NOT NULL,
-        key BLOB NOT NULL,
-        sequence INTEGER NOT NULL CHECK (sequence > 0),
-        PRIMARY KEY(endpoint, application, key)
-      ) WITHOUT ROWID;
       CREATE TABLE IF NOT EXISTS client_cluster_cursor (
         application BLOB NOT NULL,
         key BLOB NOT NULL,
