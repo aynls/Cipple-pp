@@ -21,6 +21,7 @@ ROOT = ACCEPTANCE.parents[1]
 sys.path.insert(0, str(ACCEPTANCE))
 
 from cipple_acceptance.raft import run_raft  # noqa: E402
+from cipple_acceptance.relay import run_relay  # noqa: E402
 from cipple_acceptance.runtime import candidate_env, stop_all  # noqa: E402
 from cipple_acceptance.sharding import run_sharding  # noqa: E402
 from cipple_acceptance.single_node import run_single_node  # noqa: E402
@@ -115,6 +116,7 @@ def main() -> int:
             ("single_node_runner", "单节点验收运行器自身失败。", run_single_node, work / "single-node"),
             ("raft_runner", "Raft 集群验收运行器自身失败。", run_raft, work / "raft"),
             ("sharding_runner", "分片验收运行器自身失败。", run_sharding, work / "sharding"),
+            ("relay_runner", "订阅转发验收运行器自身失败。", run_relay, work / "relay"),
         )
         for name, detail, runner, folder in runners:
             try:
