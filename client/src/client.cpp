@@ -5,7 +5,9 @@
 #include <algorithm>
 #include <stdexcept>
 #include <utility>
+#include <vector>
 
+#include "protocol/cluster/history_lost_response.hpp"
 #include "protocol/configuration/delete_request.hpp"
 #include "protocol/configuration/delete_response.hpp"
 #include "protocol/subscription/dispatch_request.hpp"
@@ -18,6 +20,7 @@
 #include "protocol/configuration/incremental_update_response.hpp"
 #include "protocol/configuration/put_request.hpp"
 #include "protocol/configuration/put_response.hpp"
+#include "protocol/frame_codec.hpp"
 #include "protocol/subscription/subscribe_request.hpp"
 #include "protocol/subscription/subscribe_response.hpp"
 #include "protocol/subscription/unsubscribe_request.hpp"
@@ -32,6 +35,12 @@ namespace cipple::client
     using boost::system::error_code;
     using entity::EntityMessage;
     using message::MessageType;
+
+    bool uses_cluster_retry(const MessageType type) noexcept
+    {
+      return type == MessageType::kGetResponse || type == MessageType::kPutResponse
+        || type == MessageType::kDeleteResponse || type == MessageType::kIncrementalUpdateResponse;
+    }
 
     template <typename Response>
     auto status_handler(Client::StatusHandler on_done)
@@ -72,6 +81,7 @@ namespace cipple::client
                                                        if (const auto self{weak.lock()})
                                                        {
                                                          self->_session = std::move(session);
+                                                         self->transmit_pending();
                                                          self->schedule_heartbeat();
                                                          if (self->_handlers.on_connected)
                                                          {
@@ -93,7 +103,7 @@ namespace cipple::client
                                                        {
                                                          self->_heartbeat_timer.reset();
                                                          self->_session.reset();
-                                                         self->fail_pending(reason);
+                                                         self->fail_session_pending(reason);
                                                          if (self->_connector && self->_handlers.on_disconnected)
                                                          {
                                                            self->_handlers.on_disconnected(reason);
@@ -233,10 +243,28 @@ namespace cipple::client
   }
 
   void Client::subscribe(std::string application_name, std::string key, StatusHandler on_done,
-                         const std::optional<std::int64_t> resume_after)
+                         const std::optional<std::int64_t> resume_after, HistoryLostHandler on_history_lost)
   {
     send(message::SubscribeRequest{Uuid::generate(), std::move(application_name), std::move(key), resume_after},
-         MessageType::kSubscribeResponse, status_handler<message::SubscribeResponse>(std::move(on_done)));
+         MessageType::kSubscribeResponse,
+         [on_done{std::move(on_done)}, on_history_lost{std::move(on_history_lost)}](
+           const error_code error, const message::Message* response)
+         {
+           if (!on_done)
+           {
+             return;
+           }
+           if (!error && response->type() == MessageType::kHistoryLostResponse)
+           {
+             if (on_history_lost)
+             {
+               on_history_lost(static_cast<const message::HistoryLostResponse&>(*response).minimum_cursor());
+             }
+             on_done({}, false);
+             return;
+           }
+           on_done(error, !error && static_cast<const message::SubscribeResponse&>(*response).success());
+         });
   }
 
   void Client::unsubscribe(std::string application_name, std::string key, StatusHandler on_done)
@@ -258,9 +286,14 @@ namespace cipple::client
       on_done(asio::error::already_started, nullptr);
       return;
     }
-    if (const auto error{_session->async_send(request)})
+    tcp::EncodedFrame frame;
+    try
     {
-      on_done(error, nullptr);
+      frame = tcp::encode_frame_shared(request);
+    }
+    catch (const std::length_error&)
+    {
+      on_done(asio::error::message_size, nullptr);
       return;
     }
     const auto generation{++_request_generation};
@@ -268,9 +301,16 @@ namespace cipple::client
       _pending.emplace(request.uuid(),
                        PendingResponse{
                          response_type, std::move(on_done), generation,
-                         asio::steady_timer{_context, timeout.value_or(_request_timeout)}
+                         asio::steady_timer{_context, timeout.value_or(_request_timeout)},
+                         std::move(frame), uses_cluster_retry(response_type), false
                        }).first
     };
+    if (const auto error{transmit(pending->second)})
+    {
+      auto failed{_pending.extract(pending)};
+      failed.mapped().on_done(error, nullptr);
+      return;
+    }
     pending->second.deadline.async_wait(
       [weak{weak_from_this()}, uuid{request.uuid()}, generation](const error_code error)
       {
@@ -279,6 +319,52 @@ namespace cipple::client
           self->on_request_timeout(uuid, generation);
         }
       });
+  }
+
+  error_code Client::transmit(PendingResponse& pending) const
+  {
+    if (!is_connected())
+    {
+      return asio::error::not_connected;
+    }
+    const auto error{_session->async_send(pending.frame)};
+    pending.in_flight = !error;
+    return error;
+  }
+
+  void Client::transmit_pending()
+  {
+    std::vector<std::pair<std::uint64_t, Uuid>> retryable;
+    for (const auto& [uuid, pending] : _pending)
+    {
+      if (pending.retryable && !pending.in_flight)
+      {
+        retryable.emplace_back(pending.generation, uuid);
+      }
+    }
+    std::ranges::sort(retryable);
+
+    std::vector<std::pair<Uuid, error_code>> failed;
+    for (const auto& [generation, uuid] : retryable)
+    {
+      const auto pending{_pending.find(uuid)};
+      if (pending == _pending.end() || pending->second.generation != generation)
+      {
+        continue;
+      }
+      if (const auto error{transmit(pending->second)})
+      {
+        failed.emplace_back(uuid, error);
+      }
+    }
+    for (const auto& [uuid, error] : failed)
+    {
+      if (const auto pending{_pending.find(uuid)}; pending != _pending.end())
+      {
+        auto expired{_pending.extract(pending)};
+        expired.mapped().on_done(error, nullptr);
+      }
+    }
   }
 
   void Client::schedule_heartbeat()
@@ -350,17 +436,37 @@ namespace cipple::client
       return;
     }
 
-    if (auto pending{_pending.extract(message.uuid())}; !pending.empty())
+    const auto pending{_pending.find(message.uuid())};
+    if (pending == _pending.end())
     {
-      auto& expected{pending.mapped()};
-      if (message.type() == expected.type)
+      return;
+    }
+    if (message.type() == MessageType::kRetryResponse)
+    {
+      if (!pending->second.retryable)
       {
-        expected.on_done({}, &message);
+        auto failed{_pending.extract(pending)};
+        failed.mapped().on_done(make_error_code(boost::system::errc::protocol_error), nullptr);
+        return;
       }
-      else
-      {
-        expected.on_done(make_error_code(boost::system::errc::protocol_error), nullptr);
-      }
+      pending->second.in_flight = false;
+      session.close();
+      return;
+    }
+
+    const bool expected_response{
+      message.type() == pending->second.type
+      || (pending->second.type == MessageType::kSubscribeResponse
+        && message.type() == MessageType::kHistoryLostResponse)
+    };
+    auto completed{_pending.extract(pending)};
+    if (expected_response)
+    {
+      completed.mapped().on_done({}, &message);
+    }
+    else
+    {
+      completed.mapped().on_done(make_error_code(boost::system::errc::protocol_error), nullptr);
     }
   }
 
@@ -371,6 +477,26 @@ namespace cipple::client
     {
       auto expired{_pending.extract(pending)};
       expired.mapped().on_done(asio::error::timed_out, nullptr);
+    }
+  }
+
+  void Client::fail_session_pending(const error_code reason)
+  {
+    std::vector<PendingResponse> failed;
+    for (auto pending{_pending.begin()}; pending != _pending.end();)
+    {
+      if (pending->second.retryable)
+      {
+        pending->second.in_flight = false;
+        ++pending;
+        continue;
+      }
+      auto extracted{_pending.extract(pending++)};
+      failed.push_back(std::move(extracted.mapped()));
+    }
+    for (auto& request : failed)
+    {
+      request.on_done(reason, nullptr);
     }
   }
 

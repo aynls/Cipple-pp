@@ -24,8 +24,8 @@ namespace cipple::client
   std::optional<std::string> materialize_delivery(const message::DispatchRequest& dispatch,
                                                   std::optional<std::string_view> saved_base = std::nullopt);
 
-  // A database represents one receiving client. Replay on a different endpoint
-  // uses that endpoint's cursor and shares the same set of accepted versions.
+  // A database represents one receiving client of one cluster. The endpoint
+  // arguments remain for API compatibility; replay progress is shared by key.
   class SubscriptionStore final
   {
   public:

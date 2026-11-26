@@ -204,14 +204,12 @@ namespace cipple::client
       return latest.step() && latest.bytes(0) == version_uuid;
     }
 
-    void advance_cursor(Statement& advance, const std::string_view endpoint, const EntityMessage& version,
-                        const std::int64_t sequence)
+    void advance_cursor(Statement& advance, const EntityMessage& version, const std::int64_t sequence)
     {
       const ResetStatement reset{advance};
-      advance.bind_text(1, endpoint);
-      advance.bind_blob(2, version.application_name());
-      advance.bind_blob(3, version.key());
-      advance.bind_int(4, sequence);
+      advance.bind_blob(1, version.application_name());
+      advance.bind_blob(2, version.key());
+      advance.bind_int(3, sequence);
       advance.step();
     }
   }
@@ -249,14 +247,14 @@ namespace cipple::client
         }
         , advance{
           database, R"sql(
-          INSERT INTO client_cursor(endpoint, application, key, sequence) VALUES (?1, ?2, ?3, ?4)
-          ON CONFLICT(endpoint, application, key) DO UPDATE SET sequence = excluded.sequence
-          WHERE excluded.sequence > client_cursor.sequence;
+          INSERT INTO client_cluster_cursor(application, key, sequence) VALUES (?1, ?2, ?3)
+          ON CONFLICT(application, key) DO UPDATE SET sequence = excluded.sequence
+          WHERE excluded.sequence > client_cluster_cursor.sequence;
         )sql"
         }
         , lookup_cursor{
           database,
-          "SELECT sequence FROM client_cursor WHERE endpoint=?1 AND application=?2 AND key=?3;"
+          "SELECT sequence FROM client_cluster_cursor WHERE application=?1 AND key=?2;"
         }
     {
     }
@@ -322,6 +320,12 @@ namespace cipple::client
         sequence INTEGER NOT NULL CHECK (sequence > 0),
         PRIMARY KEY(endpoint, application, key)
       ) WITHOUT ROWID;
+      CREATE TABLE IF NOT EXISTS client_cluster_cursor (
+        application BLOB NOT NULL,
+        key BLOB NOT NULL,
+        sequence INTEGER NOT NULL CHECK (sequence > 0),
+        PRIMARY KEY(application, key)
+      ) WITHOUT ROWID;
     )sql");
     auto statements{std::make_unique<Statements>(database)};
     _database = db.release();
@@ -334,14 +338,13 @@ namespace cipple::client
     sqlite3_close(_database);
   }
 
-  std::int64_t SubscriptionStore::cursor(const std::string_view endpoint, const std::string_view application,
+  std::int64_t SubscriptionStore::cursor(const std::string_view, const std::string_view application,
                                          const std::string_view key) const
   {
     auto& lookup{_statements->lookup_cursor};
     const ResetStatement reset{lookup};
-    lookup.bind_text(1, endpoint);
-    lookup.bind_blob(2, application);
-    lookup.bind_blob(3, key);
+    lookup.bind_blob(1, application);
+    lookup.bind_blob(2, key);
     return lookup.step() ? lookup.integer(0) : 0;
   }
 
@@ -369,7 +372,7 @@ namespace cipple::client
         store_event(_statements->insert_event, endpoint, dispatch, bytes, value);
         current = is_current(_statements->latest, version);
       }
-      advance_cursor(_statements->advance, endpoint, version, dispatch.sequence());
+      advance_cursor(_statements->advance, version, dispatch.sequence());
       execute(_database, "COMMIT;");
       return {first_seen, current, std::move(value)};
     }

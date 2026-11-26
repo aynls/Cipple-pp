@@ -5,13 +5,12 @@
 #include <algorithm>
 #include <chrono>
 #include <cstdio>
+#include <exception>
 #include <filesystem>
-#include <memory>
 #include <vector>
 
 #include "entity/entity_message.hpp"
 #include "storage/sqlite_storage.hpp"
-#include "storage/storage_writer.hpp"
 #include "uuid.hpp"
 
 namespace
@@ -39,7 +38,7 @@ namespace cipple::bench
 {
   // 事件循环停顿对比：同一 io_context 上，每次提交前 post 一个探针任务，
   // 探针的排队延迟即“commit 是否阻塞了循环”的直接度量。
-  // inline：在 I/O 线程上同步 append（旧）；writer：StorageWriter 线程提交（新）。
+  // 对照在 I/O 线程与单独线程提交 SQLite 的开销。
   int commit(std::span<const char* const> args)
   {
     const auto ops{arg_count(args, "--ops", 300)};
@@ -87,10 +86,8 @@ namespace cipple::bench
       }
       else
       {
-        storage::StorageWriter writer{
-          std::make_unique<storage::SqliteStorage>(db),
-          std::make_unique<storage::SqliteStorage>(db)
-        };
+        storage::SqliteStorage storage{db};
+        asio::thread_pool writer{1};
         std::size_t done_count{0};
         auto work{asio::make_work_guard(io)};
         std::function < void() > step;
@@ -104,26 +101,38 @@ namespace cipple::bench
           asio::post(io, [&, posted] { probes.push_back(us_since(posted)); });
           const auto t0{Clock::now()};
           const auto i{op++};
-          if (!writer.submit(io, [&, i](storage::Storage& s) { s.append(messages[i], {}); },
-                             [&, t0]
-                             {
-                               commits.push_back(us_since(t0));
-                               if (++done_count == ops)
-                               {
-                                 work.reset();
-                               }
-                               else
-                               {
-                                 asio::post(io, step);
-                               }
-                             }))
+          asio::post(writer, [&, i, t0]
           {
-            std::fprintf(stderr, "submit returned false at op %zu\n", i);
-          }
+            std::exception_ptr error;
+            try
+            {
+              storage.append(messages[i], {});
+            }
+            catch (...)
+            {
+              error = std::current_exception();
+            }
+            asio::post(io, [&, t0, error]
+            {
+              if (error)
+              {
+                std::rethrow_exception(error);
+              }
+              commits.push_back(us_since(t0));
+              if (++done_count == ops)
+              {
+                work.reset();
+              }
+              else
+              {
+                asio::post(io, step);
+              }
+            });
+          });
         };
         asio::post(io, step);
         io.run();
-        writer.stop();
+        writer.join();
       }
 
       std::printf("commit %s: ops=%zu\n", variant == 0 ? "inline-on-loop" : "writer-thread", ops);

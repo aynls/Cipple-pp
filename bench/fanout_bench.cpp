@@ -201,7 +201,7 @@ namespace cipple::bench
         double last{0};
         for (auto& c : clients)
         {
-          const double ms{std::chrono::duration < double}, std::milli>(c->done_at - start).count();
+          const double ms{std::chrono::duration<double, std::milli>(c->done_at - start).count()};
           arrivals.push_back(ms);
           last = std::max(last, ms);
         }

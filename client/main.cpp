@@ -65,6 +65,7 @@ namespace
     std::optional<AtomicOperation> operation;
     std::optional<std::string> state;
     std::optional<Uuid> request_id;
+    std::optional<std::int64_t> resume_after;
     std::optional<std::uint64_t> unsubscribe_after;
     std::optional<std::chrono::milliseconds> heartbeat_interval;
     std::chrono::milliseconds timeout{std::chrono::seconds{10}};
@@ -210,13 +211,22 @@ namespace
         }
         options.heartbeat_interval = std::chrono::milliseconds{milliseconds};
       }
-      else if (flag == "--selector" && (value == "ordered" || value == "hash"))
+      else if (flag == "--resume-after")
+      {
+        const auto cursor{parse_integer<std::int64_t>(value, "Invalid subscription resume cursor")};
+        if (cursor < 0)
+        {
+          throw std::invalid_argument{"Subscription resume cursor must be non-negative"};
+        }
+        options.resume_after = cursor;
+      }
+      else if ((flag == "--selector" || flag == "--route") && (value == "ordered" || value == "hash"))
       {
         options.selector = value == "hash" ? Selector::kHash : Selector::kOrdered;
       }
-      else if (flag == "--selector")
+      else if (flag == "--selector" || flag == "--route")
       {
-        throw std::invalid_argument{"Expected --selector ordered or hash"};
+        throw std::invalid_argument{"Expected ordered or hash for " + std::string{flag}};
       }
       else if (flag == "--unsubscribe-after")
       {
@@ -273,14 +283,16 @@ namespace
       throw std::invalid_argument{"Invalid command or arguments"};
     }
 
-    if ((options.state || options.unsubscribe_after || options.heartbeat_interval) && options.command !=
-      Command::kSubscribe)
+    if ((options.state || options.resume_after || options.unsubscribe_after || options.heartbeat_interval)
+      && options.command != Command::kSubscribe)
     {
-      throw std::invalid_argument{"--state, --unsubscribe-after and --heartbeat-ms apply to subscriptions"};
+      throw std::invalid_argument{
+        "--state, --resume-after, --unsubscribe-after and --heartbeat-ms apply to subscriptions"
+      };
     }
-    if (options.request_id && (!writes_configuration(options.command) || options.endpoints.size() != 1))
+    if (options.request_id && !writes_configuration(options.command))
     {
-      throw std::invalid_argument{"--request-id requires a write command with one endpoint"};
+      throw std::invalid_argument{"--request-id requires a write command"};
     }
     if (options.selector == Selector::kHash)
     {
@@ -318,8 +330,10 @@ namespace
     asio::signal_set signals{context, SIGINT, SIGTERM};
     int result{1};
     std::shared_ptr<Client> client;
-    std::optional<tcp::endpoint> write_endpoint;
+    std::optional<std::int64_t> resume_override{options.resume_after};
     std::uint64_t deliveries{0};
+    bool command_started{false};
+    bool history_lost{false};
     bool unsubscribing{false};
     bool finished{false};
 
@@ -339,10 +353,15 @@ namespace
         {
           return;
         }
-        if (write_endpoint)
+        if (writing && command_started)
         {
-          std::cerr << "Write result unknown for " << request_id->to_string() << " at " << *write_endpoint
-            << ". Retry with the same --request-id and endpoint. ";
+          std::cerr << "Write result unknown for " << request_id->to_string()
+            << ". Retry with the same --request-id and the same cluster endpoint list.\n";
+        }
+        if (error == asio::error::timed_out && options.endpoints.size() == 1 && !watching)
+        {
+          std::cerr << "If this endpoint is a follower, provide a comma-separated list of the cluster's "
+            "application endpoints; redirect addresses are not trusted.\n";
         }
         std::cerr << (error == asio::error::timed_out ? "Request timed out" : error.message()) << '\n';
         finish(1);
@@ -435,10 +454,7 @@ namespace
         }
         if (error)
         {
-          if (options.endpoints.size() == 1 || client->is_connected())
-          {
-            report_error(error);
-          }
+          report_error(error);
         }
         else if (!value)
         {
@@ -464,9 +480,13 @@ namespace
         {
           std::cerr << "Connected to " << *endpoint << '\n';
         }
-        if (writing)
+        if (!watching)
         {
-          write_endpoint = endpoint;
+          if (command_started)
+          {
+            return;
+          }
+          command_started = true;
         }
 
         switch (options.command)
@@ -491,12 +511,18 @@ namespace
                                      options.value, on_status, *request_id);
           break;
         case Command::kSubscribe:
-          const auto cursor{
-            state
-              ? std::make_optional(
-                state->cursor(endpoint_name(*endpoint), options.application, options.key))
-              : std::nullopt
-          };
+        {
+          std::optional<std::int64_t> cursor;
+          if (state)
+          {
+            cursor = resume_override ? *resume_override
+              : state->cursor(endpoint_name(*endpoint), options.application, options.key);
+          }
+          else if (options.resume_after)
+          {
+            cursor = *options.resume_after;
+          }
+          history_lost = false;
           client->subscribe(options.application, options.key, [&](const error_code error, const bool success)
           {
             if (error)
@@ -508,7 +534,10 @@ namespace
             }
             else if (!success)
             {
-              std::cerr << "Subscribe rejected\n";
+              if (!history_lost)
+              {
+                std::cerr << "Subscribe rejected\n";
+              }
               finish(1);
             }
             else
@@ -520,8 +549,18 @@ namespace
                 unsubscribe();
               }
             }
-          }, cursor);
+          }, cursor, [&](const std::int64_t minimum_cursor)
+          {
+            if (finished)
+            {
+              return;
+            }
+            history_lost = true;
+            std::cerr << "Subscription history is unavailable at the requested cursor; minimum available cursor is "
+              << minimum_cursor << ". Use --resume-after " << minimum_cursor << " to continue.\n";
+          });
           break;
+        }
         }
       }
     };
@@ -568,6 +607,10 @@ namespace
                                            cipple::client::materialize_delivery(dispatch)
                                          }
                                      };
+                                     if (state && resume_override && dispatch.sequence() > *resume_override)
+                                     {
+                                       resume_override.reset();
+                                     }
                                      if (accepted.first_seen)
                                      {
                                        if (accepted.current)
@@ -615,9 +658,9 @@ int main(const int argc, char** argv)
       << "Usage: cipple_client [OPTIONS] PORT|IP:PORT[,IP:PORT...] put APP KEY VALUE\n"
       "       cipple_client [OPTIONS] ENDPOINT get|get-base|delete APP KEY\n"
       "       cipple_client [OPTIONS] ENDPOINT incremental APP KEY BASE_UUID add_entry|remove_entry VALUE\n"
-      "       cipple_client [--state DB] [--unsubscribe-after COUNT] ENDPOINT subscribe APP KEY\n"
-      "Options: --selector ordered|hash, --timeout-ms MS, --verbose\n"
-      "         --request-id UUID (write on one endpoint)\n"
+      "       cipple_client [--state DB] [--resume-after N] [--unsubscribe-after COUNT] ENDPOINT subscribe APP KEY\n"
+      "Options: --selector ordered|hash (alias --route), --timeout-ms MS, --verbose\n"
+      "         --request-id UUID (write command)\n"
       "         --heartbeat-ms MS (subscribe, defaults to 1000 with --state)\n"
       "Ctrl+C unsubscribes on the active subscription connection.\n";
     return 2;

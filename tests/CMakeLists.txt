@@ -1,11 +1,4 @@
-include(FetchContent)
-
-FetchContent_Declare(
-        googletest
-        URL https://github.com/google/googletest/archive/refs/tags/v1.15.2.zip
-        URL_HASH SHA256=f179ec217f9b3b3f3c6e8b02d3e7eda997b49e4ce26d6b235c9053bec9c0bf9f
-)
-FetchContent_MakeAvailable(googletest)
+find_package(GTest CONFIG REQUIRED)
 
 add_executable(cipple_tests
         main.cpp
@@ -13,8 +6,8 @@ add_executable(cipple_tests
         common/buffer_writer_test.cpp
         common/message_protocol_test.cpp
         common/tcp_transport_test.cpp
+        server/raft_persistence_test.cpp
         server/sqlite_storage_test.cpp
-        server/storage_writer_test.cpp
         client/subscription_store_test.cpp
         integration/single_server_test.cpp
 )
@@ -24,7 +17,8 @@ target_link_libraries(cipple_tests PRIVATE
         cipple_server_lib
         cipple_client_lib
         GTest::gtest_main
-        SQLite3::SQLite3
+        NuRaft::static_lib
+        unofficial::sqlite3::sqlite3
 )
 
 include(GoogleTest)

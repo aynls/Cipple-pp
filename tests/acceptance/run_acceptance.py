@@ -20,12 +20,8 @@ ACCEPTANCE = Path(__file__).resolve().parent
 ROOT = ACCEPTANCE.parents[1]
 sys.path.insert(0, str(ACCEPTANCE))
 
-from cipple_acceptance.combined import run_combined  # noqa: E402
-from cipple_acceptance.mesh import run_mesh  # noqa: E402
-from cipple_acceptance.replication_ack import run_replication_ack  # noqa: E402
-from cipple_acceptance.replication_progress import run_replication_progress  # noqa: E402
+from cipple_acceptance.raft import run_raft  # noqa: E402
 from cipple_acceptance.runtime import candidate_env, stop_all  # noqa: E402
-from cipple_acceptance.selftest import oracle_case, proxy_case  # noqa: E402
 from cipple_acceptance.single_node import run_single_node  # noqa: E402
 
 
@@ -111,24 +107,12 @@ def main() -> int:
     sha_path = output / "SHA256SUMS.txt"
 
     cases: list[dict] = []
-    try:
-        cases.append(oracle_case())
-    except Exception:
-        _append_exc(cases, "oracle_contract", "预言自检失败。")
-    try:
-        cases.append(proxy_case())
-    except Exception:
-        _append_exc(cases, "proxy_drop_once", "代理自检抛出异常。")
-
     ready = server is not None and client is not None and server.is_file() and client.is_file()
     if ready:
         assert server is not None and client is not None
         runners = (
             ("single_node_runner", "单节点验收运行器自身失败。", run_single_node, work / "single-node"),
-            ("cluster_runner", "集群验收运行器自身失败。", run_combined, work / "cluster"),
-            ("mesh_runner", "mesh 验收运行器自身失败。", run_mesh, work / "mesh"),
-            ("replication_progress_runner", "复制补发验收运行器自身失败。", run_replication_progress, work / "progress"),
-            ("replication_ack_runner", "复制确认验收运行器自身失败。", run_replication_ack, work / "ack-retry"),
+            ("raft_runner", "Raft 集群验收运行器自身失败。", run_raft, work / "raft"),
         )
         for name, detail, runner, folder in runners:
             try:

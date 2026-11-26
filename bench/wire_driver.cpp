@@ -220,8 +220,8 @@ namespace
         return;
       }
       finished = true;
-      const auto wall{std::chrono::duration < double}, std::milli>(Clock::now() - wall_start).count();
-      const auto drain{std::chrono::duration < double}, std::milli>(last_recv - last_pub).count();
+      const auto wall{std::chrono::duration<double, std::milli>(Clock::now() - wall_start).count()};
+      const auto drain{std::chrono::duration<double, std::milli>(last_recv - last_pub).count()};
       const auto coverage{total_pairs() ? lats.size() * 100.0 / total_pairs() : 0.0};
       std::printf("drive done: ready=%zu/%zu ops=%zu warmup=%zu\n", ready, subs, ops, warmup);
       std::printf("  pairs %zu/%zu coverage=%.1f%%\n", lats.size(), total_pairs(), coverage);

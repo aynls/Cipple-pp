@@ -69,6 +69,7 @@ namespace cipple::client
     // A successful GET reports std::nullopt for an absent or deleted key.
     using GetHandler = std::function<void(boost::system::error_code, std::optional<std::string>)>;
     using GetBaseHandler = std::function<void(boost::system::error_code, std::optional<Uuid>)>;
+    using HistoryLostHandler = std::function<void(std::int64_t minimum_cursor)>;
 
     static std::shared_ptr<Client> start(boost::asio::io_context& context,
                                          const boost::asio::ip::tcp::endpoint& endpoint, ClientHandlers handlers = {});
@@ -82,7 +83,7 @@ namespace cipple::client
     std::optional<boost::asio::ip::tcp::endpoint> remote_endpoint() const noexcept;
     void stop();
 
-    // After an uncertain write, reuse its UUID on the same endpoint.
+    // After an uncertain write, reuse its UUID and original content on the same cluster.
     void put(std::string application_name, std::string key, std::string value, StatusHandler on_done,
              Uuid uuid = Uuid::generate());
     void erase(std::string application_name, std::string key, StatusHandler on_done, Uuid uuid = Uuid::generate());
@@ -93,9 +94,10 @@ namespace cipple::client
     void get_base(std::string application_name, std::string key, GetBaseHandler on_done);
 
     // Subscriptions belong to the current session. on_connected runs for each new session.
-    // resume_after enables append-order delivery starting after this endpoint-local cursor.
+    // resume_after enables append-order delivery starting after this cluster cursor.
     void subscribe(std::string application_name, std::string key, StatusHandler on_done,
-                   std::optional<std::int64_t> resume_after = std::nullopt);
+                   std::optional<std::int64_t> resume_after = std::nullopt,
+                   HistoryLostHandler on_history_lost = {});
     void unsubscribe(std::string application_name, std::string key, StatusHandler on_done);
 
   private:
@@ -107,6 +109,9 @@ namespace cipple::client
       ResponseHandler on_done;
       std::uint64_t generation;
       boost::asio::steady_timer deadline;
+      std::shared_ptr<const std::vector<std::uint8_t>> frame;
+      bool retryable;
+      bool in_flight{false};
     };
 
     Client(boost::asio::io_context& context, ClientHandlers handlers, ClientOptions options);
@@ -115,10 +120,13 @@ namespace cipple::client
                       std::function<void(boost::system::error_code, const message::GetResponse *)> on_done);
     void send(const message::Message& request, message::MessageType response_type, ResponseHandler on_done,
               std::optional<std::chrono::steady_clock::duration> timeout = std::nullopt);
+    boost::system::error_code transmit(PendingResponse& pending) const;
+    void transmit_pending();
     void schedule_heartbeat();
     void send_heartbeat();
     void on_message(tcp::Session& session, const message::Message& message);
     void on_request_timeout(const Uuid& uuid, std::uint64_t generation);
+    void fail_session_pending(boost::system::error_code reason);
     void fail_pending(boost::system::error_code reason);
 
     boost::asio::io_context& _context;

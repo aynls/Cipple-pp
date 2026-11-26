@@ -1,6 +1,6 @@
 # Cipple++
 
-面向集群的 C++23 配置发布订阅系统。项目设计见 `任务书.md` 和 `doc/architecture.md`。
+面向集群的 C++23 配置发布订阅系统。项目设计见 `doc/architecture.md`。
 
 ## 约定
 

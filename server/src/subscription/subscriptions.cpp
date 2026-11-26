@@ -5,7 +5,7 @@
 #include <stdexcept>
 
 #include "protocol/subscription/dispatch_request.hpp"
-#include "storage/storage.hpp"
+#include "storage/sqlite_storage.hpp"
 #include "protocol/frame_codec.hpp"
 #include "tcp/session.hpp"
 
@@ -30,7 +30,7 @@ namespace cipple::server
     }
   }
 
-  Subscriptions::Subscriptions(storage::Storage& reader) noexcept : _reader{reader}
+  Subscriptions::Subscriptions(storage::SqliteStorage& reader) noexcept : _reader{reader}
   {
   }
 
@@ -45,7 +45,7 @@ namespace cipple::server
     {
       for (const auto& [key, subscription] : connection->second.subscriptions)
       {
-        remove_route(id, key, subscription);
+        cancel_replay(id, key, subscription.cursor);
       }
       _connections.erase(connection);
     }
@@ -72,19 +72,15 @@ namespace cipple::server
   void Subscriptions::subscribe(const ConnectionId id, ConfigKey key, const std::optional<std::int64_t> cursor)
   {
     auto& subscriptions{_connections.at(id).subscriptions};
-    const auto [entry, inserted] = subscriptions.try_emplace(std::move(key));
-    if (inserted)
+    if (const auto old{subscriptions.find(key)}; old != subscriptions.end())
     {
-      _by_key[entry->first].insert(id);
+      cancel_replay(id, old->first, old->second.cursor);
     }
-    else if (entry->second.cursor)
-    {
-      cancel_replay(id, entry->first, *entry->second.cursor);
-    }
-    entry->second = Subscription{.cursor = cursor};
+    const auto start{cursor ? *cursor : _reader.journal_watermark()};
+    const auto [entry, inserted] = subscriptions.insert_or_assign(std::move(key), Subscription{start, cursor.has_value()});
     if (cursor)
     {
-      enqueue_replay(id, entry->first, *cursor);
+      enqueue_replay(id, entry->first, start);
     }
   }
 
@@ -96,26 +92,9 @@ namespace cipple::server
       auto& subscriptions{connection->second.subscriptions};
       if (const auto entry{subscriptions.find(key)}; entry != subscriptions.end())
       {
-        remove_route(id, entry->first, entry->second);
+        cancel_replay(id, entry->first, entry->second.cursor);
         subscriptions.erase(entry);
       }
-    }
-  }
-
-  void Subscriptions::remove_route(const ConnectionId id, const ConfigKey& key,
-                                   const Subscription& subscription) noexcept
-  {
-    if (const auto route{_by_key.find(key)}; route != _by_key.end())
-    {
-      route->second.erase(id);
-      if (route->second.empty())
-      {
-        _by_key.erase(route);
-      }
-    }
-    if (subscription.cursor)
-    {
-      cancel_replay(id, key, *subscription.cursor);
     }
   }
 
@@ -140,85 +119,30 @@ namespace cipple::server
     auto& subscription{it->second};
     subscription.cursor = subscription.pending->sequence;
     subscription.pending.reset();
-    enqueue_replay(id, it->first, *subscription.cursor);
+    enqueue_replay(id, it->first, subscription.cursor);
   }
 
-  template <typename Visit>
-  void Subscriptions::visit_subscribers(const ConfigKey& key, Visit visit) noexcept
+  void Subscriptions::wake() noexcept
   {
-    const auto route{_by_key.find(key)};
-    if (route == _by_key.end())
+    for (auto next{_connections.begin()}; next != _connections.end();)
     {
-      return;
-    }
-    for (auto next{route->second.begin()}; next != route->second.end();)
-    {
-      const auto id{*next++};
-      auto& connection{_connections.at(id)};
-      if (!visit(id, connection, connection.subscriptions.at(key)))
+      const auto& [id, connection] = *next++;
+      try
       {
-        // Disconnect erases this recipient and may remove the key's last route.
-        const bool has_more{next != route->second.end()};
-        disconnect(id);
-        if (!has_more)
+        for (const auto& [key, subscription] : connection.subscriptions)
         {
-          return;
-        }
-      }
-    }
-  }
-
-  void Subscriptions::publish_live(const ConfigKey& key, EntityMessage version,
-                                   std::optional<EntityMessage> base) noexcept
-  {
-    tcp::EncodedFrame frame;
-    bool encoded{false};
-    visit_subscribers(key, [&](ConnectionId, Connection& connection, const Subscription& subscription)
-    {
-      if (subscription.cursor)
-      {
-        return true;
-      }
-      if (!encoded)
-      {
-        encoded = true;
-        try
-        {
-          if (!base)
+          if (!subscription.pending)
           {
-            base = delivery_base(version);
+            enqueue_replay(id, key, subscription.cursor);
           }
-          frame = tcp::encode_frame_shared(message::DispatchRequest{
-            Uuid::generate(), std::move(version), 0, std::move(base),
-          });
-        }
-        catch (const std::exception& error)
-        {
-          std::cerr << "Live subscription dispatch failed: " << error.what() << '\n';
         }
       }
-      return frame && send_frame(*connection.session, frame);
-    });
-  }
-
-  void Subscriptions::wake(const ConfigKey& key) noexcept
-  {
-    visit_subscribers(key, [&](const ConnectionId id, Connection&, const Subscription& subscription)
-    {
-      if (subscription.cursor && !subscription.pending)
+      catch (const std::exception& error)
       {
-        try
-        {
-          enqueue_replay(id, key, *subscription.cursor);
-        }
-        catch (const std::exception& error)
-        {
-          std::cerr << "Subscription wake failed: " << error.what() << '\n';
-          return false;
-        }
+        std::cerr << "Subscription wake failed: " << error.what() << '\n';
+        disconnect(id);
       }
-      return true;
-    });
+    }
   }
 
   void Subscriptions::enqueue_replay(const ConnectionId id, const ConfigKey& key, const std::int64_t cursor)
@@ -270,13 +194,13 @@ namespace cipple::server
 
   void Subscriptions::replay_ready() noexcept
   {
-    while (!_ready.empty())
+    decltype(_ready) batch;
+    batch.swap(_ready);
+    for (const auto& [key, groups] : batch)
     {
-      // A failed dispatch may synchronously detach a connection from other ready groups.
-      const auto topic{_ready.extract(_ready.begin())};
-      for (const auto& [cursor, recipients] : topic.mapped())
+      for (const auto& [cursor, recipients] : groups)
       {
-        replay_group(topic.key(), cursor, recipients);
+        replay_group(key, cursor, recipients);
       }
     }
   }
@@ -287,18 +211,24 @@ namespace cipple::server
     try
     {
       auto entries{_reader.journal_after(key.first, key.second, cursor, 1)};
+      // Recheck after the query in case apply compacted the prefix concurrently.
+      if (_reader.journal_floor(key.first, key.second) > cursor)
+      {
+        for (const auto id : recipients)
+        {
+          disconnect(id);
+        }
+        return;
+      }
       if (entries.empty())
       {
         return;
       }
-      auto& [sequence, version] = entries.front();
-      auto base{delivery_base(version)};
+      const auto& [sequence, version] = entries.front();
+      const auto base{delivery_base(version)};
       const auto reply_id{Uuid::generate()};
-      const auto frame{
-        tcp::encode_frame_shared(message::DispatchRequest{
-          reply_id, std::move(version), sequence, std::move(base),
-        })
-      };
+      tcp::EncodedFrame durable_frame;
+      tcp::EncodedFrame live_frame;
       for (const auto id : recipients)
       {
         const auto connection{_connections.find(id)};
@@ -312,13 +242,26 @@ namespace cipple::server
         {
           continue;
         }
-        if (send_frame(*connection->second.session, frame))
+        auto& subscription{entry->second};
+        auto& frame{subscription.durable ? durable_frame : live_frame};
+        if (!frame)
         {
-          entry->second.pending = PendingDelivery{reply_id, sequence, Clock::now() + kDeliveryTimeout};
+          frame = tcp::encode_frame_shared(message::DispatchRequest{
+            reply_id, version, subscription.durable ? sequence : 0, base,
+          });
+        }
+        if (!send_frame(*connection->second.session, frame))
+        {
+          disconnect(id);
+        }
+        else if (subscription.durable)
+        {
+          subscription.pending = PendingDelivery{reply_id, sequence, Clock::now() + kDeliveryTimeout};
         }
         else
         {
-          disconnect(id);
+          subscription.cursor = sequence;
+          enqueue_replay(id, key, sequence);
         }
       }
     }

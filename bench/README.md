@@ -1,18 +1,18 @@
 # 性能测量
 
-从项目根目录构建测量工具。
+完成 Windows 构建配置后，从项目根目录构建测量工具。 [Windows 构建](../doc/delivery.md#windows-构建)
 
 ```powershell
-cmake --build build --target cipple_bench
-build/bench/cipple_bench.exe codec --subs 32 --reps 1000 --value-bytes 256
-build/bench/cipple_bench.exe fanout --subs 32 --ops 50 --warmup 5 --value-bytes 256
-build/bench/cipple_bench.exe commit --ops 100
+cmake --build --preset windows-release --target cipple_bench
+build/windows-release/bench/cipple_bench.exe codec --subs 32 --reps 1000 --value-bytes 256
+build/windows-release/bench/cipple_bench.exe fanout --subs 32 --ops 50 --warmup 5 --value-bytes 256
+build/windows-release/bench/cipple_bench.exe commit --ops 100
 ```
 
-这三个命令分别测量编码、回环扇出和 SQLite 写入。将驱动连到一个正在监听的服务端，可以测量发送写入请求到收到分发帧的时间。
+这三个命令分别测量编码、回环扇出和 SQLite 写入。连接正在监听的服务端可测量从发送写入请求到收到分发帧的时间。测量集群时，Python 驱动的 `--servers` 第一项应为当前 Leader，其余项可用于订阅。
 
 ```powershell
-build/bench/cipple_bench.exe drive --server 127.0.0.1:7001 --subs 8 --ops 30
+build/windows-release/bench/cipple_bench.exe drive --server 127.0.0.1:7001 --subs 8 --ops 30
 py -3 -B bench/wire_driver.py --servers 127.0.0.1:7001 --app bench --key durable --subs 8 --ops 30 --resume-after 0 --persist-sqlite out/readers --out out/wire.json
 ```
 

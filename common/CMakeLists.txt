@@ -6,6 +6,8 @@ add_library(cipple_common STATIC
         entity/entity_message.cpp
         entity/operation_type.cpp
         entity/resolve.cpp
+        protocol/cluster/history_lost_response.cpp
+        protocol/cluster/retry_response.cpp
         protocol/configuration/delete_request.cpp
         protocol/configuration/delete_response.cpp
         protocol/configuration/get_request.cpp

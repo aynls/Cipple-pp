@@ -83,7 +83,8 @@ namespace
     const auto opened{sqlite3_open_v2(_db.string().c_str(), &handle, SQLITE_OPEN_READWRITE, nullptr)};
     const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> observer{handle, sqlite3_close};
     ASSERT_EQ(opened, SQLITE_OK);
-    ASSERT_EQ(sqlite3_exec(observer.get(), "SELECT sequence FROM client_cursor", nullptr, nullptr, nullptr), SQLITE_OK);
+    ASSERT_EQ(sqlite3_exec(observer.get(), "SELECT sequence FROM client_cluster_cursor", nullptr, nullptr, nullptr),
+              SQLITE_OK);
     int log_frames{-1};
     int checkpointed_frames{-1};
     EXPECT_EQ(sqlite3_wal_checkpoint_v2(observer.get(), "main", SQLITE_CHECKPOINT_TRUNCATE,
@@ -167,17 +168,42 @@ namespace
     EXPECT_FALSE(older.current);
   }
 
-  TEST_F(SubscriptionStoreTest, CursorIsScopedToEndpointApplicationAndKey)
+  TEST_F(SubscriptionStoreTest, CursorIsSharedAcrossEndpointsAndScopedToApplicationAndKey)
   {
     SubscriptionStore store{_db.string()};
     const auto entity{update(1, "v")};
     ASSERT_TRUE(store.accept("ep1", delivery(entity, 5)).first_seen);
     EXPECT_EQ(store.cursor("ep1", "app", "key"), 5);
-    EXPECT_EQ(store.cursor("ep2", "app", "key"), 0);
+    EXPECT_EQ(store.cursor("ep2", "app", "key"), 5);
     EXPECT_EQ(store.cursor("ep1", "other", "key"), 0);
     const auto elsewhere{store.accept("ep2", delivery(entity, 9))};
     EXPECT_FALSE(elsewhere.first_seen);
+    EXPECT_EQ(store.cursor("ep1", "app", "key"), 9);
     EXPECT_EQ(store.cursor("ep2", "app", "key"), 9);
+  }
+
+  TEST_F(SubscriptionStoreTest, LegacyEndpointCursorIsNotPromoted)
+  {
+    {
+      sqlite3* handle{nullptr};
+      const auto opened{sqlite3_open_v2(_db.string().c_str(), &handle, SQLITE_OPEN_READWRITE | SQLITE_OPEN_CREATE,
+                                        nullptr)};
+      const std::unique_ptr<sqlite3, decltype(&sqlite3_close)> legacy{handle, sqlite3_close};
+      ASSERT_EQ(opened, SQLITE_OK);
+      ASSERT_EQ(sqlite3_exec(legacy.get(), R"sql(
+        CREATE TABLE client_cursor (
+          endpoint TEXT NOT NULL,
+          application BLOB NOT NULL,
+          key BLOB NOT NULL,
+          sequence INTEGER NOT NULL CHECK (sequence > 0),
+          PRIMARY KEY(endpoint, application, key)
+        ) WITHOUT ROWID;
+        INSERT INTO client_cursor VALUES ('ep', X'617070', X'6b6579', 9);
+      )sql", nullptr, nullptr, nullptr), SQLITE_OK);
+    }
+
+    SubscriptionStore store{_db.string()};
+    EXPECT_EQ(store.cursor("ep", "app", "key"), 0);
   }
 
   TEST_F(SubscriptionStoreTest, DedupAndCursorSurviveReopen)

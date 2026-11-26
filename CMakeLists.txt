@@ -5,11 +5,12 @@ set(CMAKE_CXX_STANDARD 23)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(SQLite3 3.24 REQUIRED)
-if (NOT TARGET SQLite3::SQLite3)
-    add_library(SQLite3::SQLite3 ALIAS SQLite::SQLite3)
-endif ()
 find_package(Boost CONFIG REQUIRED COMPONENTS asio)
+find_package(unofficial-sqlite3 CONFIG REQUIRED)
+
+# The pinned vcpkg port disables TLS on Windows, but its NuRaftConfig.cmake
+# still looks for OpenSSL. Import the port's exported static target directly.
+include("${VCPKG_INSTALLED_DIR}/${VCPKG_TARGET_TRIPLET}/share/nuraft/NuRaftTargets.cmake")
 
 enable_testing()
 

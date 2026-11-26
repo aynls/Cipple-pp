@@ -4,6 +4,8 @@
 #include <stdexcept>
 
 #include "binary/buffer_reader.hpp"
+#include "protocol/cluster/history_lost_response.hpp"
+#include "protocol/cluster/retry_response.hpp"
 #include "protocol/configuration/delete_request.hpp"
 #include "protocol/configuration/delete_response.hpp"
 #include "protocol/subscription/dispatch_request.hpp"
@@ -54,9 +56,11 @@ namespace cipple::tcp
       &decode_as<message::IncrementalUpdateResponse>,
       &decode_as<message::DispatchRequest>,
       &decode_as<message::DispatchResponse>,
+      &decode_as<message::RetryResponse>,
+      &decode_as<message::HistoryLostResponse>,
     };
 
-    static_assert(kDecoders.size() == static_cast<std::uint8_t>(message::MessageType::kDispatchResponse) + 1);
+    static_assert(kDecoders.size() == static_cast<std::uint8_t>(message::MessageType::kHistoryLostResponse) + 1);
   }
 
   std::unique_ptr<message::Message> decode_message(const std::span<const std::uint8_t> body)

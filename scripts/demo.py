@@ -69,13 +69,16 @@ class Watcher:
 
 
 def run_demo(server, client, directory):
-    ports = reserve_ports(3)
+    ports = reserve_ports(6)
+    application_ports, raft_ports = ports[:3], ports[3:]
     state = directory / "subscriber.db"
 
     def run_client(index, command, *args):
+        ordered = [application_ports[index]] + [port for port in application_ports if port != application_ports[index]]
+        endpoints = ",".join(f"127.0.0.1:{port}" for port in ordered)
         return subprocess.run(
-            [str(client), "--timeout-ms", "1800", str(ports[index]), command, "demo", "feature", *args],
-            capture_output=True, text=True, encoding="utf-8", timeout=4,
+            [str(client), "--timeout-ms", "7000", endpoints, command, "demo", "feature", *args],
+            capture_output=True, text=True, encoding="utf-8", timeout=9,
         )
 
     def checked(index, command, *args):
@@ -84,35 +87,23 @@ def run_demo(server, client, directory):
             raise RuntimeError(f"{command} (replica {index + 1}): {result.stderr.strip()}")
         return result.stdout.strip()
 
-    def wait_read(index, expected):
-        deadline = time.monotonic() + 12
-        while time.monotonic() < deadline:
-            result = run_client(index, "get")
-            if expected is None:
-                if result.returncode == 1 and "Configuration not found" in result.stderr:
-                    return
-            elif result.returncode == 0 and result.stdout.strip() == expected:
-                return
-            time.sleep(0.05)
-        raise RuntimeError(f"Replica {index + 1} did not converge to {expected!r}")
-
     with contextlib.ExitStack() as stack:
         cluster = []
-        for index, port in enumerate(ports):
+        for index, port in enumerate(application_ports):
             log = stack.enter_context((directory / f"replica-{index + 1}.log").open("w", encoding="utf-8"))
-            peers = ",".join(f"{peer + 1}@127.0.0.1:{other}" for peer, other in enumerate(ports) if peer != index)
+            peers = ",".join(f"{peer + 1}@127.0.0.1:{other}" for peer, other in enumerate(raft_ports) if peer != index)
             replica = subprocess.Popen(
                 [str(server), str(port), str(directory / f"replica-{index + 1}.db"),
-                 "--id", str(index + 1), "--peers", peers],
+                 "--id", str(index + 1), "--raft-port", str(raft_ports[index]), "--peers", peers],
                 stdout=log, stderr=subprocess.STDOUT,
             )
             stack.callback(stop, replica)
             cluster.append(replica)
-        for port, replica in zip(ports, cluster):
+        for port, replica in zip(application_ports, cluster):
             wait_listening(port, replica)
-        print(f"Started 3 replicas on {ports}")
+        print(f"Started 3 replicas on {application_ports}")
 
-        subscriber = Watcher(stack, client, ports[1], state, directory / "subscriber-first.log")
+        subscriber = Watcher(stack, client, application_ports[1], state, directory / "subscriber-first.log")
         subscriber.expect("Subscribed")
         checked(0, "put", "mode=canary")
         subscriber.expect("mode=canary")
@@ -121,13 +112,14 @@ def run_demo(server, client, directory):
 
         base = checked(0, "get-base")
         checked(0, "incremental", base, "add_entry", ";region=local")
-        wait_read(2, "mode=canary;region=local")
+        if checked(2, "get") != "mode=canary;region=local":
+            raise RuntimeError("The committed increment was not readable")
         checked(2, "delete")
-        wait_read(0, None)
-        wait_read(1, None)
-        print("Increment replicated to replica 3. Deletion converged to all replicas.")
+        deleted = run_client(0, "get")
+        if deleted.returncode != 1 or "Configuration not found" not in deleted.stderr:
+            raise RuntimeError("GET did not observe the committed deletion")
 
-        resumed = Watcher(stack, client, ports[2], state, directory / "subscriber-resumed.log")
+        resumed = Watcher(stack, client, application_ports[2], state, directory / "subscriber-resumed.log")
         resumed.expect("Subscribed")
         resumed.expect("mode=canary;region=local")
         resumed.expect("<deleted>")

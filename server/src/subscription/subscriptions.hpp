@@ -13,7 +13,7 @@
 
 namespace cipple::storage
 {
-  class Storage;
+  class SqliteStorage;
 }
 
 namespace cipple::tcp
@@ -29,7 +29,7 @@ namespace cipple::server
   class Subscriptions final
   {
   public:
-    explicit Subscriptions(storage::Storage& reader) noexcept;
+    explicit Subscriptions(storage::SqliteStorage& reader) noexcept;
 
     void attach(std::uint64_t id, std::shared_ptr<tcp::Session> session);
     void detach(std::uint64_t id) noexcept;
@@ -38,9 +38,7 @@ namespace cipple::server
     void unsubscribe(std::uint64_t id, const ConfigKey& key) noexcept;
     void acknowledge(std::uint64_t id, const Uuid& reply_id, bool success);
 
-    void publish_live(const ConfigKey& key, entity::EntityMessage version,
-                      std::optional<entity::EntityMessage> base) noexcept;
-    void wake(const ConfigKey& key) noexcept;
+    void wake() noexcept;
     bool has_ready() const noexcept;
     void replay_ready() noexcept;
     void expire() noexcept;
@@ -59,7 +57,8 @@ namespace cipple::server
 
     struct Subscription
     {
-      std::optional<std::int64_t> cursor;
+      std::int64_t cursor;
+      bool durable;
       std::optional<PendingDelivery> pending;
     };
 
@@ -69,18 +68,14 @@ namespace cipple::server
       std::map<ConfigKey, Subscription> subscriptions;
     };
 
-    template <typename Visit>
-    void visit_subscribers(const ConfigKey& key, Visit visit) noexcept;
     void disconnect(ConnectionId id) noexcept;
-    void remove_route(ConnectionId id, const ConfigKey& key, const Subscription& subscription) noexcept;
     void enqueue_replay(ConnectionId id, const ConfigKey& key, std::int64_t cursor);
     void cancel_replay(ConnectionId id, const ConfigKey& key, std::int64_t cursor) noexcept;
     std::optional<entity::EntityMessage> delivery_base(const entity::EntityMessage& version) const;
     void replay_group(const ConfigKey& key, std::int64_t cursor, const Recipients& recipients) noexcept;
 
-    storage::Storage& _reader;
+    storage::SqliteStorage& _reader;
     std::unordered_map<ConnectionId, Connection> _connections;
-    std::map<ConfigKey, Recipients> _by_key;
     // At most one queued replay per subscription. Frames are shared only within a replay group.
     std::map<ConfigKey, std::map<std::int64_t, Recipients>> _ready;
   };

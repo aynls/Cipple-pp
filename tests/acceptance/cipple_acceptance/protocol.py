@@ -31,6 +31,8 @@ INCREMENTAL_REQUEST = 14
 INCREMENTAL_RESPONSE = 15
 DISPATCH_REQUEST = 16
 DISPATCH_RESPONSE = 17
+RETRY_RESPONSE = 18
+HISTORY_LOST_RESPONSE = 19
 
 OP_UPDATE = "update"
 OP_DELETE = "delete"
@@ -220,10 +222,6 @@ def sync_request(rpc_id: uuid.UUID, entity: bytes, from_id: int) -> bytes:
     return frame(SYNC_REQUEST, rpc_id, entity + _i32(from_id))
 
 
-def sync_response(rpc_id: uuid.UUID, result: int) -> bytes:
-    return frame(SYNC_RESPONSE, rpc_id, bytes([result]))
-
-
 def decode_dispatch(body: bytes) -> Dispatch:
     msg_type, msg_id, reader = decode_body(body)
     if msg_type != DISPATCH_REQUEST:
@@ -274,17 +272,10 @@ def decode_bool_response(body: bytes, expected: int) -> bool:
     return flag == 1
 
 
-def sync_entity_uuid(body: bytes) -> uuid.UUID | None:
-    """Entity UUID carried by a SyncRequest, or None for any other frame."""
-    if not body or body[0] != SYNC_REQUEST or len(body) < 33:
-        return None
-    return uuid.UUID(bytes=body[17:33])
-
-
-def sync_rpc_uuid(body: bytes) -> uuid.UUID | None:
-    if not body or body[0] not in (SYNC_REQUEST, SYNC_RESPONSE) or len(body) < 17:
-        return None
-    return uuid.UUID(bytes=body[1:17])
+def decode_retry(body: bytes, request_id: uuid.UUID) -> None:
+    msg_type, msg_id, reader = decode_body(body)
+    if msg_type != RETRY_RESPONSE or msg_id != request_id or reader.remaining():
+        raise ProtocolError(f"expected retry for {request_id}, got type {msg_type} for {msg_id}")
 
 
 def sync_result(body: bytes) -> int | None:
