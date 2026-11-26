@@ -34,6 +34,7 @@ CTest 覆盖帧编解码、会话、SQLite 事务、订阅存储和单节点请�
 - 多数派提交、停止 Leader 后换主以及孤立节点拒绝写入和查询。
 - 离线副本安装快照、追赶尾部日志、进程重启以及过旧订阅游标处理。
 - 分片间的数据隔离、错误分片响应、片内订阅续传以及单片失去多数派时其他分片的服务能力。
+- 持久订阅组内单跳转发、组员过半超时后的换队长、补发及迟到回执处理。
 
 结果记录在控制台显示的报告目录。文本报告列出命令和观测，JSON 便于后续处理。SHA256 文件记录被测二进制与报告的校验值。
 
@@ -93,6 +94,22 @@ CTest 覆盖帧编解码、会话、SQLite 事务、订阅存储和单节点请�
 ```
 
 部署时为每个分片副本分配独立的新数据库，并为订阅者指定该部署专用的状态库。分片数据库绑定规范化布局和分片 ID。
+
+## 持久订阅组内转发
+
+本功能部署于可信内网。带 `--state` 的客户端自动参与组内转发接收。具备可达监听端口的客户端可用 `--relay-port` 参与队长选举。端口为 0 时由操作系统分配，`--relay-slots` 指定队长可同时承担的组员连接数，默认 16，允许 1 到 64。Server 使用队长会话的对端地址下发端点，组员应能在该地址访问监听端口。
+
+在不同终端启动这些订阅，示例中的各客户端连到同一副本。
+
+```powershell
+./build/windows-release/client/cipple_client.exe --state captain.db --relay-port 7200 127.0.0.1:7001 subscribe demo feature
+./build/windows-release/client/cipple_client.exe --state member-1.db 127.0.0.1:7001 subscribe demo feature
+./build/windows-release/client/cipple_client.exe --state member-2.db 127.0.0.1:7001 subscribe demo feature
+```
+
+每个分支最多包含一名队长和八名组员。同一分支至少有两名已连通的组员能接收同一事件，且直推帧至少为 1 KiB 时，Server 才选用转发。回执窗口为两秒，恢复队列最多保存 1,024 项任务。
+
+恢复带宽通过 `--relay-bytes-per-second` 和 `--relay-burst-bytes` 调整，默认分别为 8 MiB/s 和 32 MiB。桶容量至少能容纳 16 MiB 帧体加 4 字节长度前缀。
 
 ## 数据文件
 
